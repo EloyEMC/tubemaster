@@ -8,9 +8,15 @@ import { z } from "zod";
 import { createVideoMetadataCore } from "@/lib/video-metadata";
 import { DomainError } from "@/lib/video-metadata/contracts";
 import type { VideoMetadataCore } from "@/lib/video-metadata";
-import { createCliAuthService, type CliAuthService } from "@/lib/cli-auth/service";
+import {
+  createCliAuthService,
+  type CliAuthService,
+} from "@/lib/cli-auth/service";
 import type { CredentialRef } from "@/lib/video-metadata/contracts";
-import { createPlaylistManagementCore, type PlaylistManagementCore } from "@/lib/playlist-management";
+import {
+  createPlaylistManagementCore,
+  type PlaylistManagementCore,
+} from "@/lib/playlist-management";
 import {
   summarizeQuotaUsage,
   type QuotaUsageSummaryFilter,
@@ -100,7 +106,7 @@ function mapValidationErrorResult(error: z.ZodError): ToolResponse {
         message: issue.message,
         code: issue.code,
       })),
-    })
+    }),
   );
 }
 
@@ -156,7 +162,14 @@ export const writeChannelListInputSchema = z
   })
   .strict();
 
-export const quotaUsageInputSchema = z.object({}).strict();
+    export const quotaUsageInputSchema = z
+      .object({
+        channelId: z
+          .string()
+          .regex(/^[A-Za-z0-9_-]+$/, "Invalid channelId")
+          .optional(),
+      })
+      .strict();
 
 export const writeChannelSelectInputSchema = z
   .object({
@@ -187,9 +200,10 @@ const playlistUpdateToolInputSchema = z
       payload.description !== undefined ||
       payload.privacyStatus !== undefined,
     {
-      message: "At least one mutable field is required: title, description or privacyStatus",
+      message:
+        "At least one mutable field is required: title, description or privacyStatus",
       path: ["title"],
-    }
+    },
   );
 
 type QuotaReader = {
@@ -221,12 +235,16 @@ export function createMcpToolHandlers(
     resolveEffectiveCredentialRef: CliAuthService["resolveEffectiveCredentialRef"];
     whoami: () => Promise<unknown>;
     selectUser: (args: { userId: string }) => Promise<unknown>;
-    listKnownWriteChannels: (args?: { credentialRef?: CredentialRef }) => Promise<unknown>;
-    selectWriteChannel: (args: { channelId: string; credentialRef?: CredentialRef }) => Promise<unknown>;
+    listKnownWriteChannels: (args?: {
+      credentialRef?: CredentialRef;
+    }) => Promise<unknown>;
+    selectWriteChannel: (args: {
+      channelId: string;
+      credentialRef?: CredentialRef;
+    }) => Promise<unknown>;
   } = createCliAuthService(),
   quotaReader: QuotaReader = { summarizeQuotaUsage },
 ) {
-
   async function resolveCredentialRef(explicitCredentialRef: unknown) {
     return auth.resolveEffectiveCredentialRef({
       explicit: explicitCredentialRef as CredentialRef | undefined,
@@ -251,7 +269,9 @@ export function createMcpToolHandlers(
 
       try {
         const result = await auth.listKnownWriteChannels({
-          credentialRef: parsedInput.data.credentialRef as CredentialRef | undefined,
+          credentialRef: parsedInput.data.credentialRef as
+            | CredentialRef
+            | undefined,
         });
         return toolSuccessResult(result as Record<string, unknown>);
       } catch (error) {
@@ -267,7 +287,9 @@ export function createMcpToolHandlers(
 
       try {
         const result = await auth.selectWriteChannel({
-          credentialRef: parsedInput.data.credentialRef as CredentialRef | undefined,
+          credentialRef: parsedInput.data.credentialRef as
+            | CredentialRef
+            | undefined,
           channelId: parsedInput.data.channelId,
         });
         return toolSuccessResult(result as Record<string, unknown>);
@@ -296,6 +318,9 @@ export function createMcpToolHandlers(
         const summaries = await quotaReader.summarizeQuotaUsage({
           scopeType: "user",
           scopeId: activeUserId(user),
+          ...(parsedInput.data.channelId
+            ? { channelId: parsedInput.data.channelId }
+            : {}),
         });
         return toolSuccessResult({ summaries });
       } catch (error) {
@@ -315,7 +340,10 @@ export function createMcpToolHandlers(
         });
         return toolSuccessResult(result as Record<string, unknown>);
       } catch (error) {
-        if (error instanceof DomainError && error.code === "AUTH_USER_NOT_FOUND") {
+        if (
+          error instanceof DomainError &&
+          error.code === "AUTH_USER_NOT_FOUND"
+        ) {
           return toolErrorResult(error);
         }
 
@@ -330,7 +358,9 @@ export function createMcpToolHandlers(
       }
 
       try {
-        const credentialRef = await resolveCredentialRef(parsedInput.data.credentialRef);
+        const credentialRef = await resolveCredentialRef(
+          parsedInput.data.credentialRef,
+        );
         const result = await core.listVideos({
           ...parsedInput.data,
           credentialRef,
@@ -348,7 +378,9 @@ export function createMcpToolHandlers(
       }
 
       try {
-        const credentialRef = await resolveCredentialRef(parsedInput.data.credentialRef);
+        const credentialRef = await resolveCredentialRef(
+          parsedInput.data.credentialRef,
+        );
         const result = await core.getTranscript({
           ...parsedInput.data,
           credentialRef,
@@ -366,7 +398,9 @@ export function createMcpToolHandlers(
       }
 
       try {
-        const credentialRef = await resolveCredentialRef(parsedInput.data.credentialRef);
+        const credentialRef = await resolveCredentialRef(
+          parsedInput.data.credentialRef,
+        );
         const result = await core.previewMetadata({
           ...parsedInput.data,
           credentialRef,
@@ -384,7 +418,9 @@ export function createMcpToolHandlers(
       }
 
       try {
-        const credentialRef = await resolveCredentialRef(parsedInput.data.credentialRef);
+        const credentialRef = await resolveCredentialRef(
+          parsedInput.data.credentialRef,
+        );
         const result = await core.applyMetadata({
           ...parsedInput.data,
           credentialRef,
@@ -404,7 +440,9 @@ export function createMcpToolHandlers(
       }
 
       try {
-        const credentialRef = await resolveCredentialRef(parsedInput.data.credentialRef);
+        const credentialRef = await resolveCredentialRef(
+          parsedInput.data.credentialRef,
+        );
         const result = await core.listPlaylists({ credentialRef });
         return toolSuccessResult(result as Record<string, unknown>);
       } catch (error) {
@@ -421,7 +459,9 @@ export function createMcpToolHandlers(
       }
 
       try {
-        const credentialRef = await resolveCredentialRef(parsedInput.data.credentialRef);
+        const credentialRef = await resolveCredentialRef(
+          parsedInput.data.credentialRef,
+        );
         const result = await core.createPlaylist({
           ...parsedInput.data,
           credentialRef,
@@ -441,7 +481,9 @@ export function createMcpToolHandlers(
       }
 
       try {
-        const credentialRef = await resolveCredentialRef(parsedInput.data.credentialRef);
+        const credentialRef = await resolveCredentialRef(
+          parsedInput.data.credentialRef,
+        );
         const result = await core.deletePlaylist({
           ...parsedInput.data,
           credentialRef,
@@ -459,7 +501,9 @@ export function createMcpToolHandlers(
       }
 
       try {
-        const credentialRef = await resolveCredentialRef(parsedInput.data.credentialRef);
+        const credentialRef = await resolveCredentialRef(
+          parsedInput.data.credentialRef,
+        );
         const result = await core.updatePlaylist({
           ...parsedInput.data,
           credentialRef,
@@ -479,7 +523,9 @@ export function createMcpToolHandlers(
       }
 
       try {
-        const credentialRef = await resolveCredentialRef(parsedInput.data.credentialRef);
+        const credentialRef = await resolveCredentialRef(
+          parsedInput.data.credentialRef,
+        );
         const result = await core.addVideosToPlaylist({
           ...parsedInput.data,
           credentialRef,
@@ -499,7 +545,9 @@ export function createMcpToolHandlers(
       }
 
       try {
-        const credentialRef = await resolveCredentialRef(parsedInput.data.credentialRef);
+        const credentialRef = await resolveCredentialRef(
+          parsedInput.data.credentialRef,
+        );
         const result = await core.removeVideosFromPlaylist({
           ...parsedInput.data,
           credentialRef,
@@ -516,7 +564,7 @@ export function createMcpServer(
   core: VideoMetadataCoreSubset & PlaylistManagementCoreSubset = {
     ...createVideoMetadataCore(),
     ...createPlaylistManagementCore(),
-  }
+  },
 ) {
   const server = new McpServer({
     name: "youtube-video-metadata",
@@ -532,18 +580,17 @@ export function createMcpServer(
         "Read-only quota usage summary for the active authenticated user. This tool never accepts a user ID and never returns global or other-user usage.",
       inputSchema: quotaUsageInputSchema,
     },
-    () => handlers.quotaUsage({})
+    () => handlers.quotaUsage({}),
   );
 
   server.registerTool(
     "write_context",
     {
-
       description:
         "Read-only write context for current OAuth session, including activeWriteChannel, selectedChannelId and effectiveCredentialRef.",
       inputSchema: z.object({}).strict(),
     },
-    () => handlers.writeContext()
+    () => handlers.writeContext(),
   );
 
   server.registerTool(
@@ -553,7 +600,7 @@ export function createMcpServer(
         "List the minimal-safe known write channels from local state (active OAuth + persisted selection).",
       inputSchema: writeChannelListInputSchema,
     },
-    (args) => handlers.writeChannelList(args)
+    (args) => handlers.writeChannelList(args),
   );
 
   server.registerTool(
@@ -563,7 +610,7 @@ export function createMcpServer(
         "Persist expected write channel selection and return alignment state. Does not switch active OAuth identity.",
       inputSchema: writeChannelSelectInputSchema,
     },
-    (args) => handlers.writeChannelSelect(args)
+    (args) => handlers.writeChannelSelect(args),
   );
 
   server.registerTool(
@@ -573,7 +620,7 @@ export function createMcpServer(
         "Return the active local authenticated user for this MCP server. Use this when you need to confirm which YouTube account will be used before calling other tools.",
       inputSchema: z.object({}).strict(),
     },
-    () => handlers.whoami()
+    () => handlers.whoami(),
   );
 
   server.registerTool(
@@ -583,7 +630,7 @@ export function createMcpServer(
         "Switch local active user fallback. Does not login, reauth, or switch active OAuth channel.",
       inputSchema: authUserSelectInputSchema,
     },
-    (args) => handlers.authUserSelect(args)
+    (args) => handlers.authUserSelect(args),
   );
 
   server.registerTool(
@@ -593,7 +640,7 @@ export function createMcpServer(
         "List channel videos using the shared core. credentialRef is OPTIONAL: if omitted, the server uses the active local auth context established via CLI auth login. channelId is OPTIONAL and recommended for multi-account / Brand Account setups to force a specific YouTube channel.",
       inputSchema: listInputSchema,
     },
-    (args) => handlers.list(args)
+    (args) => handlers.list(args),
   );
 
   server.registerTool(
@@ -603,7 +650,7 @@ export function createMcpServer(
         "Get transcript status and text for a video. credentialRef is OPTIONAL: if omitted, the server uses the active local auth context established via CLI auth login.",
       inputSchema: transcriptInputSchema,
     },
-    (args) => handlers.transcript(args)
+    (args) => handlers.transcript(args),
   );
 
   server.registerTool(
@@ -613,7 +660,7 @@ export function createMcpServer(
         "Generate final title and description preview for a video. credentialRef is OPTIONAL: if omitted, the server uses the active local auth context established via CLI auth login.",
       inputSchema: previewInputSchema,
     },
-    (args) => handlers.preview(args)
+    (args) => handlers.preview(args),
   );
 
   server.registerTool(
@@ -623,7 +670,7 @@ export function createMcpServer(
         "Apply metadata with optional dryRun. credentialRef is OPTIONAL: if omitted, the server uses the active local auth context established via CLI auth login.",
       inputSchema: applyInputSchema,
     },
-    (args) => handlers.apply(args)
+    (args) => handlers.apply(args),
   );
 
   server.registerTool(
@@ -633,7 +680,7 @@ export function createMcpServer(
         "List playlists for the authenticated YouTube account. credentialRef is OPTIONAL and falls back to active local auth context.",
       inputSchema: playlistListInputSchema.partial({ credentialRef: true }),
     },
-    (args) => handlers.playlistList(args)
+    (args) => handlers.playlistList(args),
   );
 
   server.registerTool(
@@ -643,7 +690,7 @@ export function createMcpServer(
         "Create a YouTube playlist. credentialRef is OPTIONAL and falls back to active local auth context.",
       inputSchema: playlistCreateInputSchema.partial({ credentialRef: true }),
     },
-    (args) => handlers.playlistCreate(args)
+    (args) => handlers.playlistCreate(args),
   );
 
   server.registerTool(
@@ -651,9 +698,11 @@ export function createMcpServer(
     {
       description:
         "Add one or more videos to a playlist and return stable partial results with attempted/added/failures.",
-      inputSchema: playlistAddVideosInputSchema.partial({ credentialRef: true }),
+      inputSchema: playlistAddVideosInputSchema.partial({
+        credentialRef: true,
+      }),
     },
-    (args) => handlers.playlistAddVideos(args)
+    (args) => handlers.playlistAddVideos(args),
   );
 
   server.registerTool(
@@ -663,7 +712,7 @@ export function createMcpServer(
         "Delete a playlist after strict write-channel guardrail validation. credentialRef is OPTIONAL and falls back to active local auth context.",
       inputSchema: playlistDeleteInputSchema.partial({ credentialRef: true }),
     },
-    (args) => handlers.playlistDelete(args)
+    (args) => handlers.playlistDelete(args),
   );
 
   server.registerTool(
@@ -673,7 +722,7 @@ export function createMcpServer(
         "Update playlist metadata with strict patch validation and write-channel guardrails. credentialRef is OPTIONAL and falls back to active local auth context.",
       inputSchema: playlistUpdateToolInputSchema,
     },
-    (args) => handlers.playlistUpdate(args)
+    (args) => handlers.playlistUpdate(args),
   );
 
   server.registerTool(
@@ -681,9 +730,11 @@ export function createMcpServer(
     {
       description:
         "Remove one or more videos from a playlist and return stable partial results with requested/removed/failures.",
-      inputSchema: playlistRemoveVideosInputSchema.partial({ credentialRef: true }),
+      inputSchema: playlistRemoveVideosInputSchema.partial({
+        credentialRef: true,
+      }),
     },
-    (args) => handlers.playlistRemoveVideos(args)
+    (args) => handlers.playlistRemoveVideos(args),
   );
 
   return server;
