@@ -51,7 +51,83 @@ test("quota usage route scopes repository lookup to the current user", async () 
   assert.deepEqual(filters, [{ scopeType: "user", scopeId: "user-1" }]);
 });
 
-test("quota usage route returns summaries on success", async () => {
+    test("quota usage route forwards safe filters while preserving user scope", async () => {
+      const filters: unknown[] = [];
+      const handler = createQuotaUsageGetHandler({
+        getSession: async () => ({ user: { id: "user-1" } }),
+        repository: {
+          summarizeQuotaUsage: async (filter) => {
+            filters.push(filter);
+            return summaries;
+          },
+        },
+      });
+
+      const response = await handler(
+        new Request(
+          "http://localhost/api/quota/usage?bucketStart=2025-01-01&operation=video_metadata&operationId=operation-1",
+        ),
+      );
+
+      assert.equal(response.status, 200);
+      assert.deepEqual(filters, [
+        {
+          scopeType: "user",
+          scopeId: "user-1",
+          bucketStart: "2025-01-01",
+          operation: "video_metadata",
+          operationId: "operation-1",
+        },
+      ]);
+    });
+
+    test("quota usage route rejects an invalid bucket date without a repository call", async () => {
+      let repositoryCalls = 0;
+      const handler = createQuotaUsageGetHandler({
+        getSession: async () => ({ user: { id: "user-1" } }),
+        repository: {
+          summarizeQuotaUsage: async () => {
+            repositoryCalls += 1;
+            return summaries;
+          },
+        },
+      });
+
+      const response = await handler(
+        new Request("http://localhost/api/quota/usage?bucketStart=2025-02-30"),
+      );
+
+      assert.equal(response.status, 422);
+      assert.deepEqual(await response.json(), {
+        error: "Invalid quota usage query",
+        code: "INVALID_INPUT",
+      });
+      assert.equal(repositoryCalls, 0);
+    });
+
+    test("quota usage route rejects caller-controlled scope filters", async () => {
+      let repositoryCalls = 0;
+      const handler = createQuotaUsageGetHandler({
+        getSession: async () => ({ user: { id: "user-1" } }),
+        repository: {
+          summarizeQuotaUsage: async () => {
+            repositoryCalls += 1;
+            return summaries;
+          },
+        },
+      });
+
+      const response = await handler(
+        new Request(
+          "http://localhost/api/quota/usage?scopeType=global&scopeId=other-user",
+        ),
+      );
+
+      assert.equal(response.status, 422);
+      assert.equal(repositoryCalls, 0);
+    });
+
+    test("quota usage route returns summaries on success", async () => {
   const handler = createQuotaUsageGetHandler({
     getSession: async () => ({ user: { id: "user-1" } }),
     repository: { summarizeQuotaUsage: async () => summaries },
