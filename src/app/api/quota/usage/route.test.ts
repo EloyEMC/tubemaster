@@ -9,6 +9,7 @@ const summaries: QuotaUsageSummary[] = [
     scopeType: "user",
     scopeId: "user-1",
     operation: "video_metadata",
+    operationId: "operation-1",
     operationCount: 2,
     estimatedUnits: 20,
   },

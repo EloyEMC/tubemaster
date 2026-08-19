@@ -7,6 +7,7 @@ import { formatQuotaBucketStart } from "./formatter";
 type QuotaSummary = {
   bucketStart: string;
   operation: string;
+  operationId: string;
   operationCount: number;
   estimatedUnits: number;
 };
@@ -134,6 +135,7 @@ export default function QuotaPage() {
                   <tr>
                     <th className="px-4 py-3 font-medium">Day</th>
                     <th className="px-4 py-3 font-medium">Operation</th>
+                    <th className="px-4 py-3 font-medium">Operation ID</th>
                     <th className="px-4 py-3 text-right font-medium">
                       Operations
                     </th>
@@ -144,12 +146,17 @@ export default function QuotaPage() {
                 </thead>
                 <tbody className="divide-y divide-zinc-800">
                   {summaries.map((summary) => (
-                    <tr key={`${summary.bucketStart}-${summary.operation}`}>
+                    <tr
+                      key={`${summary.bucketStart}-${summary.operation}-${summary.operationId}`}
+                    >
                       <td className="px-4 py-3 text-zinc-300">
                         {formatQuotaBucketStart(summary.bucketStart)}
                       </td>
                       <td className="px-4 py-3 text-zinc-300">
                         {summary.operation}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-zinc-400">
+                        {summary.operationId}
                       </td>
                       <td className="px-4 py-3 text-right text-zinc-400">
                         {numberFormatter.format(summary.operationCount)}

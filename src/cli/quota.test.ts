@@ -53,18 +53,24 @@ test("quota usage parser accepts the command and rejects flags or unknown subcom
 test("quota usage queries the exact active-user scope and serializes the result", async () => {
   const stdout: string[] = [];
   const filters: unknown[] = [];
-  const summary = [{
-    bucketStart: "2026-01-01T00:00:00.000Z",
-    scopeType: "user",
-    scopeId: "active-user",
-    operation: "videos.list",
-    operationCount: 2,
-    estimatedUnits: 10,
-  }];
+  const summary = [
+    {
+      bucketStart: "2026-01-01T00:00:00.000Z",
+      scopeType: "user",
+      scopeId: "active-user",
+      operation: "videos.list",
+      operationId: "operation-1",
+      operationCount: 2,
+      estimatedUnits: 10,
+    },
+  ];
 
   const exitCode = await runCliCommand({
     argv: ["quota", "usage"],
-    auth: makeAuthStub(async () => ({ userId: "active-user", email: "active@example.com" })),
+    auth: makeAuthStub(async () => ({
+      userId: "active-user",
+      email: "active@example.com",
+    })),
     quotaReader: {
       summarizeQuotaUsage: async (filter) => {
         filters.push(filter);
@@ -84,7 +90,10 @@ test("quota usage serializes authentication failures as stable errors", async ()
   const exitCode = await runCliCommand({
     argv: ["quota", "usage"],
     auth: makeAuthStub(async () => {
-      throw new DomainError({ code: "unauthorized", message: "Authentication required" });
+      throw new DomainError({
+        code: "unauthorized",
+        message: "Authentication required",
+      });
     }),
     quotaReader: { summarizeQuotaUsage: async () => [] },
     writeStderr: (line) => stderr.push(line),

@@ -67,6 +67,7 @@ export type QuotaUsageSummary = {
   scopeType: string;
   scopeId: string | null;
   operation: string;
+  operationId: string;
   operationCount: number;
   estimatedUnits: number;
 };
@@ -105,6 +106,7 @@ export async function summarizeQuotaUsage(
       scopeType: quotaUsage.scopeType,
       scopeId: quotaUsage.scopeId,
       operation: quotaUsage.operation,
+      operationId: quotaUsage.operationId,
       operationCount: sql<number>`count(*)`,
       estimatedUnits: sql<number>`coalesce(sum(${quotaUsage.estimatedUnits}), 0)`,
     })
@@ -115,12 +117,14 @@ export async function summarizeQuotaUsage(
       quotaUsage.scopeType,
       quotaUsage.scopeId,
       quotaUsage.operation,
+      quotaUsage.operationId,
     )
     .orderBy(
       asc(quotaUsage.bucketStart),
       asc(quotaUsage.scopeType),
       asc(quotaUsage.scopeId),
       asc(quotaUsage.operation),
+      asc(quotaUsage.operationId),
     );
 
   return rows;

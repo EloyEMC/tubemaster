@@ -98,7 +98,9 @@ function makeAuthStub(overrides: { whoami?: () => Promise<unknown> } = {}) {
 }
 
 function makeReader(
-  summarizeQuotaUsage: (filter: QuotaUsageSummaryFilter) => Promise<QuotaUsageSummary[]>,
+  summarizeQuotaUsage: (
+    filter: QuotaUsageSummaryFilter,
+  ) => Promise<QuotaUsageSummary[]>,
 ) {
   return { summarizeQuotaUsage };
 }
@@ -111,6 +113,7 @@ test("MCP quota_usage scopes summaries to the authenticated active user", async 
       scopeType: "user",
       scopeId: "active-user",
       operation: "transcript",
+      operationId: "operation-1",
       operationCount: 2,
       estimatedUnits: 200,
     },
@@ -126,7 +129,10 @@ test("MCP quota_usage scopes summaries to the authenticated active user", async 
 
   const result = await handlers.quotaUsage({});
 
-  assert.deepEqual(capturedFilter, { scopeType: "user", scopeId: "active-user" });
+  assert.deepEqual(capturedFilter, {
+    scopeType: "user",
+    scopeId: "active-user",
+  });
   assert.deepEqual(result.structuredContent, { summaries });
   assert.equal(result.isError, undefined);
 });
@@ -139,7 +145,11 @@ test("MCP quota_usage rejects non-empty input before authentication", async () =
       return { userId: "active-user" };
     },
   });
-  const handlers = createMcpToolHandlers(makeCoreStub(), auth, makeReader(async () => []));
+  const handlers = createMcpToolHandlers(
+    makeCoreStub(),
+    auth,
+    makeReader(async () => []),
+  );
 
   const result = await handlers.quotaUsage({ userId: "other-user" });
 
@@ -152,7 +162,11 @@ test("MCP quota_usage returns authentication failures without querying quota dat
   let repositoryCalls = 0;
   const handlers = createMcpToolHandlers(
     makeCoreStub(),
-    makeAuthStub({ whoami: async () => { throw new Error("auth unavailable"); } }),
+    makeAuthStub({
+      whoami: async () => {
+        throw new Error("auth unavailable");
+      },
+    }),
     makeReader(async () => {
       repositoryCalls += 1;
       return [];
@@ -170,7 +184,9 @@ test("MCP quota_usage returns repository failures", async () => {
   const handlers = createMcpToolHandlers(
     makeCoreStub(),
     makeAuthStub(),
-    makeReader(async () => { throw new Error("quota store unavailable"); }),
+    makeReader(async () => {
+      throw new Error("quota store unavailable");
+    }),
   );
 
   const result = await handlers.quotaUsage({});
@@ -193,8 +209,14 @@ test("MCP quota_usage does not expose credentials or permit global queries", asy
   const result = await handlers.quotaUsage({});
   const serialized = result.content[0]?.text ?? "";
 
-  assert.deepEqual(capturedFilter, { scopeType: "user", scopeId: "active-user" });
-  assert.doesNotMatch(serialized, /must-not-be-exposed|accessToken|refreshToken/);
+  assert.deepEqual(capturedFilter, {
+    scopeType: "user",
+    scopeId: "active-user",
+  });
+  assert.doesNotMatch(
+    serialized,
+    /must-not-be-exposed|accessToken|refreshToken/,
+  );
   assert.doesNotMatch(serialized, /global/);
   assert.equal(result.structuredContent?.mutated, undefined);
 });
