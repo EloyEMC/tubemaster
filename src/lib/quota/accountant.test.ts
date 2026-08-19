@@ -92,6 +92,22 @@ test("default accountant factory derives durable user and global scopes from res
   ]);
 });
 
+test("durable record eventually persists without an explicit flush", async () => {
+  const inserted: string[] = [];
+  const accountant = new DurableQuotaAccountant({
+    repository: {
+      insert: async ({ operationId }) => {
+        inserted.push(operationId);
+      },
+    },
+  });
+
+  accountant.record({ operationId: "automatic", operation: "videos.list" });
+
+  await Promise.resolve();
+  assert.deepEqual(inserted, ["automatic"]);
+});
+
 test("durable quota accountant persists repeated records and survives re-instantiation", async () => {
   const operationId = `durable-${Date.now()}-${Math.random()}`;
   const first = new DurableQuotaAccountant({
@@ -376,7 +392,7 @@ test("concurrent flushes drain each queued record exactly once", async () => {
   assert.deepEqual(inserts, ["concurrent"]);
 });
 
-test("records added during a flush remain queued for the next flush", async () => {
+test("records added during a flush trigger a subsequent drain", async () => {
   let releaseFirst!: () => void;
   const firstPersistence = new Promise<void>((resolve) => {
     releaseFirst = resolve;
@@ -398,7 +414,5 @@ test("records added during a flush remain queued for the next flush", async () =
   releaseFirst();
   await firstFlush;
 
-  assert.deepEqual(inserts, ["first"]);
-  await accountant.flush();
   assert.deepEqual(inserts, ["first", "during"]);
 });

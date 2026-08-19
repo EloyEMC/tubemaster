@@ -114,6 +114,8 @@ export class DurableQuotaAccountant extends InMemoryQuotaAccountant {
   private readonly timezone: string;
   private readonly now: () => Date;
   private readonly onPersistenceError: (error: unknown) => void;
+  private flushInFlight: Promise<void> | undefined;
+  private flushRequested = false;
 
   constructor(options: DurableQuotaAccountantOptions = {}) {
     super();
@@ -127,19 +129,20 @@ export class DurableQuotaAccountant extends InMemoryQuotaAccountant {
   override record(entry: {
     operationId: string;
     operation: QuotaOperation;
-      }): void {
-        super.record(entry);
-        const recordedAt = this.now();
-        this.pending.push({
-          scopeType: this.userId ? "user" : "global",
-          scopeId: this.userId ?? null,
-          bucketStart: getQuotaBucketStart(recordedAt, this.timezone),
-          operation: entry.operation,
-          estimatedUnits: YOUTUBE_QUOTA_COSTS[entry.operation],
-          operationId: entry.operationId,
-          recordedAt: recordedAt.toISOString(),
-        });
-      }
+  }): void {
+    super.record(entry);
+    const recordedAt = this.now();
+    this.pending.push({
+      scopeType: this.userId ? "user" : "global",
+      scopeId: this.userId ?? null,
+      bucketStart: getQuotaBucketStart(recordedAt, this.timezone),
+      operation: entry.operation,
+      estimatedUnits: YOUTUBE_QUOTA_COSTS[entry.operation],
+      operationId: entry.operationId,
+      recordedAt: recordedAt.toISOString(),
+    });
+    void this.flush().catch(() => undefined);
+  }
 
       private async persist(entry: InsertQuotaUsageInput): Promise<void> {
         try {
@@ -159,8 +162,23 @@ export class DurableQuotaAccountant extends InMemoryQuotaAccountant {
        * made concurrently observe the same drained queue and do not duplicate it.
        */
       async flush(): Promise<void> {
+        if (this.flushInFlight) {
+          this.flushRequested = true;
+          return this.flushInFlight;
+        }
+
         const pending = this.pending.splice(0);
-        await Promise.all(pending.map((entry) => this.persist(entry)));
+        this.flushInFlight = Promise.all(
+          pending.map((entry) => this.persist(entry)),
+        ).then(async () => {
+          this.flushInFlight = undefined;
+          if (this.flushRequested || this.pending.length > 0) {
+            this.flushRequested = false;
+            await this.flush();
+          }
+        });
+
+        return this.flushInFlight;
       }
     }
 
