@@ -7,7 +7,11 @@ import type {
   VideoMetadataItem,
 } from "./contracts";
 import { DomainError } from "./contracts";
-import { createVideoMetadataServices, type ServiceDependencies } from "./services";
+import {
+  createVideoMetadataServices,
+  type ServiceDependencies,
+} from "./services";
+import { InMemoryQuotaAccountant } from "../quota/accountant";
 
 function makeCredentials(): ResolvedCredentials {
   return {
@@ -43,12 +47,17 @@ type ServiceDependencyOverrides = {
   logger?: Partial<ServiceDependencies["logger"]>;
   writeContext?: Partial<ServiceDependencies["writeContext"]>;
   channelSelectionStore?: Partial<ServiceDependencies["channelSelectionStore"]>;
+  operationIdFactory?: ServiceDependencies["operationIdFactory"];
+  quotaAccountant?: ServiceDependencies["quotaAccountant"];
 };
 
 function makeDeps(overrides?: ServiceDependencyOverrides): ServiceDependencies {
   const credentials = makeCredentials();
   const video = makeVideo();
-  const transcript: TranscriptResult = { status: "available", text: "transcript" };
+  const transcript: TranscriptResult = {
+    status: "available",
+    text: "transcript",
+  };
   const draft = makeDraft();
   const metadataContext = {
     snippet: {
@@ -64,7 +73,10 @@ function makeDeps(overrides?: ServiceDependencyOverrides): ServiceDependencies {
     },
     localizations: {
       es: { title: "Título original", description: "Descripción original" },
-      en: { title: "Original title EN", description: "Original description EN" },
+      en: {
+        title: "Original title EN",
+        description: "Original description EN",
+      },
     },
   };
 
@@ -105,6 +117,8 @@ function makeDeps(overrides?: ServiceDependencyOverrides): ServiceDependencies {
       setSelectedChannelId: async () => undefined,
       ...overrides?.channelSelectionStore,
     },
+    operationIdFactory: overrides?.operationIdFactory,
+    quotaAccountant: overrides?.quotaAccountant,
   };
 }
 
@@ -120,6 +134,100 @@ test("listVideos returns typed list when credentials are valid", async () => {
   assert.equal(result.videos[0]?.videoId, "video-1");
 });
 
+test("listVideos emits correlated lifecycle events with safe context", async () => {
+  const events: Array<{ event: string; context?: Record<string, unknown> }> =
+    [];
+  const services = createVideoMetadataServices(
+    makeDeps({
+      operationIdFactory: () => "list-operation",
+      logger: {
+        info: (payload) => events.push(payload),
+        error: (payload) => events.push(payload),
+      },
+    }),
+  );
+
+  await services.listVideos({
+    credentialRef: { userId: "user-1" },
+    channelId: "channel-1",
+  });
+
+  assert.deepEqual(events, [
+    {
+      event: "video_metadata.list.started",
+      context: { operationId: "list-operation" },
+    },
+    {
+      event: "video_metadata.list.success",
+      context: {
+        operationId: "list-operation",
+        count: 1,
+      },
+    },
+  ]);
+});
+
+test("listVideos emits one safe error event when the adapter fails", async () => {
+  const events: Array<{ event: string; context?: Record<string, unknown> }> =
+    [];
+  const services = createVideoMetadataServices(
+    makeDeps({
+      operationIdFactory: () => "list-error-operation",
+      youtubeApi: {
+        listVideos: async () => {
+          throw new Error("provider secret");
+        },
+      },
+      logger: {
+        info: (payload) => events.push(payload),
+        error: (payload) => events.push(payload),
+      },
+    }),
+  );
+
+  await assert.rejects(() =>
+    services.listVideos({ credentialRef: { userId: "user-1" } }),
+  );
+
+  assert.deepEqual(events, [
+    {
+      event: "video_metadata.list.started",
+      context: { operationId: "list-error-operation" },
+    },
+    {
+      event: "video_metadata.list.error",
+      context: {
+        operationId: "list-error-operation",
+        code: "unauthorized",
+      },
+    },
+  ]);
+  assert.equal(
+    events.some((entry) => JSON.stringify(entry).includes("provider secret")),
+    false,
+  );
+});
+
+test("listVideos ignores logger failures", async () => {
+  const services = createVideoMetadataServices(
+    makeDeps({
+      logger: {
+        info: () => {
+          throw new Error("logger failure");
+        },
+        error: () => {
+          throw new Error("logger failure");
+        },
+      },
+    }),
+  );
+
+  const result = await services.listVideos({
+    credentialRef: { userId: "user-1" },
+  });
+  assert.equal(result.videos.length, 1);
+});
+
 test("listVideos maps unknown adapter errors to unauthorized", async () => {
   const services = createVideoMetadataServices(
     makeDeps({
@@ -128,13 +236,48 @@ test("listVideos maps unknown adapter errors to unauthorized", async () => {
           throw new Error("forbidden");
         },
       },
-    })
+    }),
   );
 
   await assert.rejects(
     () => services.listVideos({ credentialRef: { userId: "user-1" } }),
-    (error: unknown) => error instanceof DomainError && error.code === "unauthorized"
+    (error: unknown) =>
+      error instanceof DomainError && error.code === "unauthorized",
   );
+});
+
+test("getTranscript emits correlated lifecycle events", async () => {
+  const events: Array<{ event: string; context?: Record<string, unknown> }> =
+    [];
+  const services = createVideoMetadataServices(
+    makeDeps({
+      operationIdFactory: () => "transcript-operation",
+      logger: {
+        info: (payload) => events.push(payload),
+        error: (payload) => events.push(payload),
+      },
+    }),
+  );
+
+  await services.getTranscript({
+    credentialRef: { userId: "user-1" },
+    videoId: "video-1",
+  });
+
+  assert.deepEqual(events, [
+    {
+      event: "video_metadata.transcript.started",
+      context: { operationId: "transcript-operation", videoId: "video-1" },
+    },
+    {
+      event: "video_metadata.transcript.success",
+      context: {
+        operationId: "transcript-operation",
+        videoId: "video-1",
+        status: "available",
+      },
+    },
+  ]);
 });
 
 test("getTranscript keeps available status", async () => {
@@ -152,9 +295,12 @@ test("getTranscript keeps unavailable status", async () => {
   const services = createVideoMetadataServices(
     makeDeps({
       transcriptProvider: {
-        getTranscript: async () => ({ status: "unavailable", reason: "no-captions" }),
+        getTranscript: async () => ({
+          status: "unavailable",
+          reason: "no-captions",
+        }),
       },
-    })
+    }),
   );
 
   const result = await services.getTranscript({
@@ -162,7 +308,10 @@ test("getTranscript keeps unavailable status", async () => {
     videoId: "video-1",
   });
 
-  assert.deepEqual(result.transcript, { status: "unavailable", reason: "no-captions" });
+  assert.deepEqual(result.transcript, {
+    status: "unavailable",
+    reason: "no-captions",
+  });
 });
 
 test("getTranscript preserves granular unavailable reason and diagnostic", async () => {
@@ -180,7 +329,7 @@ test("getTranscript preserves granular unavailable reason and diagnostic", async
           },
         }),
       },
-    })
+    }),
   );
 
   const result = await services.getTranscript({
@@ -204,9 +353,12 @@ test("getTranscript keeps unsupported status", async () => {
   const services = createVideoMetadataServices(
     makeDeps({
       transcriptProvider: {
-        getTranscript: async () => ({ status: "unsupported", reason: "provider-missing" }),
+        getTranscript: async () => ({
+          status: "unsupported",
+          reason: "provider-missing",
+        }),
       },
-    })
+    }),
   );
 
   const result = await services.getTranscript({
@@ -214,7 +366,46 @@ test("getTranscript keeps unsupported status", async () => {
     videoId: "video-1",
   });
 
-  assert.deepEqual(result.transcript, { status: "unsupported", reason: "provider-missing" });
+  assert.deepEqual(result.transcript, {
+    status: "unsupported",
+    reason: "provider-missing",
+  });
+});
+
+test("previewMetadata emits correlated lifecycle events with bounded status", async () => {
+  const events: Array<{ event: string; context?: Record<string, unknown> }> =
+    [];
+  const services = createVideoMetadataServices(
+    makeDeps({
+      operationIdFactory: () => "preview-operation",
+      logger: {
+        info: (payload) => events.push(payload),
+        error: (payload) => events.push(payload),
+      },
+    }),
+  );
+
+  await services.previewMetadata({
+    credentialRef: { userId: "user-1" },
+    videoId: "video-1",
+    editorialPrompt: "private prompt",
+  });
+
+  assert.deepEqual(events, [
+    {
+      event: "video_metadata.preview.started",
+      context: { operationId: "preview-operation", videoId: "video-1" },
+    },
+    {
+      event: "video_metadata.preview.success",
+      context: {
+        operationId: "preview-operation",
+        videoId: "video-1",
+        status: "available",
+      },
+    },
+  ]);
+  assert.equal(JSON.stringify(events).includes("private prompt"), false);
 });
 
 test("previewMetadata returns one finalTitle and one description", async () => {
@@ -235,7 +426,10 @@ test("previewMetadata remains enabled when transcript is unavailable", async () 
   const services = createVideoMetadataServices(
     makeDeps({
       transcriptProvider: {
-        getTranscript: async () => ({ status: "unavailable", reason: "no-captions" }),
+        getTranscript: async () => ({
+          status: "unavailable",
+          reason: "no-captions",
+        }),
       },
       metadataGenerator: {
         generate: async ({ transcript }) => {
@@ -243,7 +437,7 @@ test("previewMetadata remains enabled when transcript is unavailable", async () 
           return makeDraft();
         },
       },
-    })
+    }),
   );
 
   const result = await services.previewMetadata({
@@ -279,7 +473,7 @@ test("previewMetadata keeps working with granular transcript diagnostics", async
           return makeDraft();
         },
       },
-    })
+    }),
   );
 
   const result = await services.previewMetadata({
@@ -307,7 +501,10 @@ test("previewMetadata remains enabled when transcript provider is unsupported", 
   const services = createVideoMetadataServices(
     makeDeps({
       transcriptProvider: {
-        getTranscript: async () => ({ status: "unsupported", reason: "provider-missing" }),
+        getTranscript: async () => ({
+          status: "unsupported",
+          reason: "provider-missing",
+        }),
       },
       metadataGenerator: {
         generate: async ({ transcript }) => {
@@ -315,7 +512,7 @@ test("previewMetadata remains enabled when transcript provider is unsupported", 
           return makeDraft();
         },
       },
-    })
+    }),
   );
 
   const result = await services.previewMetadata({
@@ -338,7 +535,7 @@ test("applyMetadata dryRun and apply share the exact same proposed payload", asy
           applyCalls += 1;
         },
       },
-    })
+    }),
   );
 
   const input = {
@@ -356,7 +553,10 @@ test("applyMetadata dryRun and apply share the exact same proposed payload", asy
   assert.equal(applyResult.dryRun, false);
   assert.equal(applyCalls, 1);
   assert.deepEqual(dryRunResult.snippet.proposed, applyResult.snippet.proposed);
-  assert.deepEqual(dryRunResult.localizations.proposed, applyResult.localizations.proposed);
+  assert.deepEqual(
+    dryRunResult.localizations.proposed,
+    applyResult.localizations.proposed,
+  );
   assert.equal(dryRunResult.targetLanguage, "es");
 });
 
@@ -369,7 +569,7 @@ test("applyMetadata preserves non-editorial snippet fields and non-target locali
           capturedProposal = proposal;
         },
       },
-    })
+    }),
   );
 
   const result = await services.applyMetadata({
@@ -449,7 +649,7 @@ test("applyMetadata resolves target language from defaultLanguage or single loca
         youtubeApi: {
           getVideoMetadataContext: async () => testCase.context,
         },
-      })
+      }),
     );
 
     const result = await services.applyMetadata({
@@ -461,7 +661,11 @@ test("applyMetadata resolves target language from defaultLanguage or single loca
       dryRun: true,
     });
 
-    assert.equal(result.targetLanguage, testCase.expectedLanguage, testCase.name);
+    assert.equal(
+      result.targetLanguage,
+      testCase.expectedLanguage,
+      testCase.name,
+    );
     assert.equal(result.languageSource, testCase.expectedSource, testCase.name);
   }
 });
@@ -497,7 +701,7 @@ test("applyMetadata blocks when target language is not uniquely resolvable", asy
             applyCalls += 1;
           },
         },
-      })
+      }),
     );
 
     await assert.rejects(
@@ -514,7 +718,7 @@ test("applyMetadata blocks when target language is not uniquely resolvable", asy
         error instanceof DomainError &&
         error.code === "target_language_unresolvable" &&
         /Cannot resolve target language/.test(error.message),
-      blockingCase.name
+      blockingCase.name,
     );
 
     assert.equal(applyCalls, 0, `${blockingCase.name} should not mutate`);
