@@ -20,6 +20,17 @@ export const users = sqliteTable("users", {
   selectedChannelId: text("selected_channel_id"),
 });
 
+export const quotaUsage = sqliteTable("youtube_quota_usage", {
+  id: text("id").primaryKey(),
+  scopeType: text("scope_type").notNull(),
+  scopeId: text("scope_id"),
+  bucketStart: text("bucket_start").notNull(),
+  operation: text("operation").notNull(),
+  estimatedUnits: integer("estimated_units").notNull(),
+  operationId: text("operation_id").notNull(),
+  recordedAt: text("recorded_at").notNull(),
+});
+
 export const rules = sqliteTable("rules", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: text("user_id")
@@ -50,7 +61,17 @@ async function initializeDatabase() {
       oauth_scope TEXT,
       selected_channel_id TEXT
     );
-    CREATE TABLE IF NOT EXISTS rules (
+        CREATE TABLE IF NOT EXISTS youtube_quota_usage (
+          id TEXT PRIMARY KEY,
+          scope_type TEXT NOT NULL,
+          scope_id TEXT,
+          bucket_start TEXT NOT NULL,
+          operation TEXT NOT NULL,
+          estimated_units INTEGER NOT NULL,
+          operation_id TEXT NOT NULL,
+          recorded_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS rules (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id TEXT NOT NULL REFERENCES users(id),
       name TEXT NOT NULL,
@@ -66,7 +87,9 @@ async function initializeDatabase() {
 
   // Migration: add selected_channel_id if missing (idempotent)
   try {
-    await rawClient.execute("ALTER TABLE users ADD COLUMN selected_channel_id TEXT");
+    await rawClient.execute(
+      "ALTER TABLE users ADD COLUMN selected_channel_id TEXT",
+    );
   } catch {
     // Column already exists
   }
@@ -79,10 +102,12 @@ async function initializeDatabase() {
   }
 }
 
-export const databaseInitialization = initializeDatabase().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : "Unknown error";
-  throw new Error(`Database initialization failed: ${message}`);
-});
+export const databaseInitialization = initializeDatabase().catch(
+  (error: unknown) => {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    throw new Error(`Database initialization failed: ${message}`);
+  },
+);
 
 const client = new Proxy(rawClient, {
   get(target, property, receiver) {
@@ -108,7 +133,7 @@ const client = new Proxy(rawClient, {
   },
 });
 
-export const db = drizzle(client, { schema: { users, rules } });
+export const db = drizzle(client, { schema: { users, rules, quotaUsage } });
 
 export type StoredOAuthToken = {
   userId: string;
@@ -119,7 +144,7 @@ export type StoredOAuthToken = {
 };
 
 export async function getUserOAuthTokens(
-  userId: string
+  userId: string,
 ): Promise<StoredOAuthToken | null> {
   const [row] = await db.select().from(users).where(eq(users.id, userId));
   if (!row) return null;
@@ -135,7 +160,7 @@ export async function getUserOAuthTokens(
 
 export async function saveUserOAuthTokens(
   userId: string,
-  patch: Partial<Omit<StoredOAuthToken, "userId">>
+  patch: Partial<Omit<StoredOAuthToken, "userId">>,
 ) {
   await db
     .update(users)
@@ -160,7 +185,7 @@ type UpsertUserOAuthOnSignInInput = {
 };
 
 export async function upsertUserOAuthOnSignIn(
-  input: UpsertUserOAuthOnSignInInput
+  input: UpsertUserOAuthOnSignInInput,
 ) {
   const existing = await getUserOAuthTokens(input.userId);
 
@@ -211,8 +236,13 @@ export type OAuthUserSummary = {
   hasRefreshToken: boolean;
 };
 
-export async function upsertOAuthUserFromCli(input: UpsertOAuthUserFromCliInput) {
-  const [existing] = await db.select().from(users).where(eq(users.id, input.userId));
+export async function upsertOAuthUserFromCli(
+  input: UpsertOAuthUserFromCliInput,
+) {
+  const [existing] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, input.userId));
 
   if (existing) {
     await db
@@ -258,7 +288,7 @@ export async function listOAuthUsers(): Promise<OAuthUserSummary[]> {
 }
 
 export async function getOAuthUserSummary(
-  userId: string
+  userId: string,
 ): Promise<OAuthUserSummary | null> {
   const [row] = await db.select().from(users).where(eq(users.id, userId));
   if (!row) return null;
@@ -284,7 +314,9 @@ export async function clearUserOAuthTokens(userId: string) {
     .where(eq(users.id, userId));
 }
 
-export async function getSelectedChannelId(userId: string): Promise<string | null> {
+export async function getSelectedChannelId(
+  userId: string,
+): Promise<string | null> {
   const [row] = await db
     .select({ selectedChannelId: users.selectedChannelId })
     .from(users)
@@ -293,7 +325,10 @@ export async function getSelectedChannelId(userId: string): Promise<string | nul
   return row?.selectedChannelId ?? null;
 }
 
-export async function setSelectedChannelId(userId: string, channelId: string): Promise<void> {
+export async function setSelectedChannelId(
+  userId: string,
+  channelId: string,
+): Promise<void> {
   await db
     .update(users)
     .set({ selectedChannelId: channelId })

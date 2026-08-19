@@ -1,0 +1,127 @@
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { db, quotaUsage } from "../db";
+
+export type QuotaUsageRow = {
+  id: string;
+  scopeType: string;
+  scopeId: string | null;
+  bucketStart: string;
+  operation: string;
+  estimatedUnits: number;
+  operationId: string;
+  recordedAt: string;
+};
+
+export type InsertQuotaUsageInput = Omit<QuotaUsageRow, "id"> & { id?: string };
+
+export type QuotaUsageRepository = {
+  insert(input: InsertQuotaUsageInput): Promise<void>;
+};
+
+export const quotaUsageRepository: QuotaUsageRepository = {
+  async insert(input) {
+    await db.insert(quotaUsage).values({
+      id: input.id ?? crypto.randomUUID(),
+      scopeType: input.scopeType,
+      scopeId: input.scopeId,
+      bucketStart: input.bucketStart,
+      operation: input.operation,
+      estimatedUnits: input.estimatedUnits,
+      operationId: input.operationId,
+      recordedAt: input.recordedAt,
+    });
+  },
+};
+
+export async function listQuotaUsage(
+  filter: {
+    operationId?: string;
+    scopeType?: string;
+    scopeId?: string | null;
+  } = {},
+): Promise<QuotaUsageRow[]> {
+  const conditions = [];
+  if (filter.operationId !== undefined)
+    conditions.push(eq(quotaUsage.operationId, filter.operationId));
+  if (filter.scopeType !== undefined)
+    conditions.push(eq(quotaUsage.scopeType, filter.scopeType));
+  if (filter.scopeId !== undefined) {
+    conditions.push(
+      filter.scopeId === null
+        ? isNull(quotaUsage.scopeId)
+        : eq(quotaUsage.scopeId, filter.scopeId),
+    );
+  }
+
+  const rows = await db
+    .select()
+    .from(quotaUsage)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(asc(quotaUsage.recordedAt), asc(quotaUsage.id));
+
+  return rows;
+}
+
+export type QuotaUsageSummary = {
+  bucketStart: string;
+  scopeType: string;
+  scopeId: string | null;
+  operation: string;
+  operationCount: number;
+  estimatedUnits: number;
+};
+
+export type QuotaUsageSummaryFilter = {
+  scopeType?: string;
+  scopeId?: string | null;
+  bucketStart?: string;
+  operation?: string;
+  operationId?: string;
+};
+
+export async function summarizeQuotaUsage(
+  filter: QuotaUsageSummaryFilter = {},
+): Promise<QuotaUsageSummary[]> {
+  const conditions = [];
+  if (filter.scopeType !== undefined)
+    conditions.push(eq(quotaUsage.scopeType, filter.scopeType));
+  if (filter.scopeId !== undefined) {
+    conditions.push(
+      filter.scopeId === null
+        ? isNull(quotaUsage.scopeId)
+        : eq(quotaUsage.scopeId, filter.scopeId),
+    );
+  }
+  if (filter.bucketStart !== undefined)
+    conditions.push(eq(quotaUsage.bucketStart, filter.bucketStart));
+  if (filter.operation !== undefined)
+    conditions.push(eq(quotaUsage.operation, filter.operation));
+  if (filter.operationId !== undefined)
+    conditions.push(eq(quotaUsage.operationId, filter.operationId));
+
+  const rows = await db
+    .select({
+      bucketStart: quotaUsage.bucketStart,
+      scopeType: quotaUsage.scopeType,
+      scopeId: quotaUsage.scopeId,
+      operation: quotaUsage.operation,
+      operationCount: sql<number>`count(*)`,
+      estimatedUnits: sql<number>`coalesce(sum(${quotaUsage.estimatedUnits}), 0)`,
+    })
+    .from(quotaUsage)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .groupBy(
+      quotaUsage.bucketStart,
+      quotaUsage.scopeType,
+      quotaUsage.scopeId,
+      quotaUsage.operation,
+    )
+    .orderBy(
+      asc(quotaUsage.bucketStart),
+      asc(quotaUsage.scopeType),
+      asc(quotaUsage.scopeId),
+      asc(quotaUsage.operation),
+    );
+
+  return rows;
+}

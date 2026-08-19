@@ -164,3 +164,131 @@ test("quota bucket timezone defaults safely and is deterministic", () => {
     "2026-01-02",
   );
 });
+
+test("durable flush persistence failures do not escape record or service accounting", async () => {
+  const errors: unknown[] = [];
+  const accountant = new DurableQuotaAccountant({
+    repository: {
+      insert: async () => {
+        throw new Error("persistence unavailable");
+      },
+    },
+    onPersistenceError: (error) => errors.push(error),
+  });
+
+  assert.doesNotThrow(() =>
+    accountant.record({ operationId: "failed", operation: "videos.list" }),
+  );
+  await accountant.flush();
+  assert.equal(errors.length, 1);
+  assert.equal(accountant.entries().length, 1);
+});
+
+test("quota usage summaries aggregate by bucket, scope, and operation", async () => {
+  const prefix = `summary-${Date.now()}-${Math.random()}`;
+  await Promise.all([
+    quotaUsageRepository.insert({
+      id: `${prefix}-user-list-1`,
+      scopeType: "user",
+      scopeId: prefix,
+      bucketStart: "2099-01-01",
+      operation: "videos.list",
+      estimatedUnits: 1,
+      operationId: `${prefix}-operation-1`,
+      recordedAt: "2099-01-01T00:00:00.000Z",
+    }),
+    quotaUsageRepository.insert({
+      id: `${prefix}-user-list-2`,
+      scopeType: "user",
+      scopeId: prefix,
+      bucketStart: "2099-01-01",
+      operation: "videos.list",
+      estimatedUnits: 2,
+      operationId: `${prefix}-operation-2`,
+      recordedAt: "2099-01-01T00:01:00.000Z",
+    }),
+    quotaUsageRepository.insert({
+      id: `${prefix}-global-update`,
+      scopeType: "global",
+      scopeId: null,
+      bucketStart: "2099-01-01",
+      operation: "videos.update",
+      estimatedUnits: 50,
+      operationId: `${prefix}-operation-3`,
+      recordedAt: "2099-01-01T00:02:00.000Z",
+    }),
+  ]);
+
+  assert.deepEqual(
+    await summarizeQuotaUsage({ operationId: `${prefix}-operation-1` }),
+    [
+      {
+        bucketStart: "2099-01-01",
+        scopeType: "user",
+        scopeId: prefix,
+        operation: "videos.list",
+        operationCount: 1,
+        estimatedUnits: 1,
+      },
+    ],
+  );
+  assert.deepEqual(
+    await summarizeQuotaUsage({ operationId: `${prefix}-operation-3` }),
+    [
+      {
+        bucketStart: "2099-01-01",
+        scopeType: "global",
+        scopeId: null,
+        operation: "videos.update",
+        operationCount: 1,
+        estimatedUnits: 50,
+      },
+    ],
+  );
+  assert.deepEqual(
+    await summarizeQuotaUsage({
+      scopeType: "user",
+      scopeId: prefix,
+      operation: "videos.list",
+    }),
+    [
+      {
+        bucketStart: "2099-01-01",
+        scopeType: "user",
+        scopeId: prefix,
+        operation: "videos.list",
+        operationCount: 2,
+        estimatedUnits: 3,
+      },
+    ],
+  );
+});
+
+test("quota usage summaries return empty results without exposing ledger fields", async () => {
+  const rows = await summarizeQuotaUsage({
+    operationId: `missing-${Date.now()}-${Math.random()}`,
+  });
+  assert.deepEqual(rows, []);
+  assert.deepEqual(Object.keys(rows), []);
+});
+
+test("quota cost table is explicit for playlist and transcript operations", () => {
+  const operations: QuotaOperation[] = [
+    "channels.list",
+    "videos.list",
+    "videos.update",
+    "playlists.list",
+    "playlists.insert",
+    "playlists.update",
+    "playlists.delete",
+    "playlistItems.list",
+    "playlistItems.insert",
+    "playlistItems.delete",
+    "captions.list",
+    "captions.download",
+  ];
+  assert.deepEqual(
+    operations.map((operation) => YOUTUBE_QUOTA_COSTS[operation]),
+    [1, 1, 50, 1, 50, 50, 50, 1, 50, 50, 50, 200],
+  );
+});
