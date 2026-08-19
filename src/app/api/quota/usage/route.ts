@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
+import { YOUTUBE_QUOTA_COSTS } from "@/lib/quota/accountant";
 import {
   summarizeQuotaUsage,
   type QuotaUsageSummary,
@@ -77,7 +78,12 @@ export function createQuotaUsageGetHandler(
     if (bucketStart !== null) filter.bucketStart = bucketStart;
 
     const operation = url.searchParams.get("operation");
-    if (operation !== null) filter.operation = operation;
+    if (operation !== null) {
+      if (!Object.hasOwn(YOUTUBE_QUOTA_COSTS, operation)) {
+        return invalidQueryResponse();
+      }
+      filter.operation = operation;
+    }
 
     const operationId = url.searchParams.get("operationId");
     if (operationId !== null) filter.operationId = operationId;
