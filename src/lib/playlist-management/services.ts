@@ -40,6 +40,8 @@ type ServiceDependencies = {
   youtubeApi: {
     listPlaylists(args: {
       credentials: ResolvedCredentials;
+      operationId?: string;
+      quotaAccountant?: QuotaAccountant;
     }): Promise<Playlist[]>;
     createPlaylist(args: {
       credentials: ResolvedCredentials;
@@ -50,6 +52,8 @@ type ServiceDependencies = {
     getPlaylistForUpdate(args: {
       credentials: ResolvedCredentials;
       playlistId: string;
+      operationId?: string;
+      quotaAccountant?: QuotaAccountant;
     }): Promise<(Playlist & { channelId: string }) | null>;
     updatePlaylist(args: {
       credentials: ResolvedCredentials;
@@ -61,6 +65,8 @@ type ServiceDependencies = {
     getPlaylistForDelete(args: {
       credentials: ResolvedCredentials;
       playlistId: string;
+      operationId?: string;
+      quotaAccountant?: QuotaAccountant;
     }): Promise<{ id: string; channelId: string; title: string } | null>;
     deletePlaylist(args: {
       credentials: ResolvedCredentials;
@@ -74,6 +80,8 @@ type ServiceDependencies = {
     listPlaylistItemIdsByVideo(args: {
       credentials: ResolvedCredentials;
       playlistId: string;
+      operationId?: string;
+      quotaAccountant?: QuotaAccountant;
     }): Promise<Map<string, string[]>>;
     deletePlaylistItem(args: {
       credentials: ResolvedCredentials;
@@ -237,8 +245,11 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
         });
         const accountant = resolveQuotaAccountant(deps, credentials);
 
-        safeAccount(accountant, operationId, "playlists.list");
-        const playlists = await deps.youtubeApi.listPlaylists({ credentials });
+            const playlists = await deps.youtubeApi.listPlaylists({
+              credentials,
+              operationId,
+              quotaAccountant: accountant,
+            });
         const output = parseWithSchema(
           playlistListOutputSchema,
           { playlists },
@@ -353,10 +364,11 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
         });
 
         const accountant = resolveQuotaAccountant(deps, credentials);
-        safeAccount(accountant, operationId, "playlists.list");
         const currentPlaylist = await deps.youtubeApi.getPlaylistForUpdate({
           credentials,
           playlistId: parsedInput.playlistId,
+          operationId,
+          quotaAccountant: accountant,
         });
 
         if (!currentPlaylist) {
@@ -448,10 +460,11 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
         });
 
         const accountant = resolveQuotaAccountant(deps, credentials);
-        safeAccount(accountant, operationId, "playlists.list");
         const playlist = await deps.youtubeApi.getPlaylistForDelete({
           credentials,
           playlistId: parsedInput.playlistId,
+          operationId,
+          quotaAccountant: accountant,
         });
 
         if (!playlist) {
@@ -610,11 +623,12 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
 
         const accountant = resolveQuotaAccountant(deps, credentials);
 
-        safeAccount(accountant, operationId, "playlistItems.list");
         const itemIdsByVideo = await deps.youtubeApi.listPlaylistItemIdsByVideo(
           {
             credentials,
             playlistId: parsedInput.playlistId,
+            operationId,
+            quotaAccountant: accountant,
           },
         );
 

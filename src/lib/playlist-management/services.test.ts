@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DomainError } from "./contracts";
 import { createPlaylistManagementServices } from "./services";
-import { InMemoryQuotaAccountant } from "../quota/accountant";
+import {
+  InMemoryQuotaAccountant,
+  type QuotaAccountant,
+} from "../quota/accountant";
 
 function createServicesFixture(
   options: {
@@ -21,6 +24,17 @@ function createServicesFixture(
     credentialRef: unknown;
     requiredScopes: readonly string[];
   }> = [];
+  const accountRead = (
+    args: { operationId?: string; quotaAccountant?: QuotaAccountant },
+    operation: "playlists.list" | "playlistItems.list",
+  ) => {
+    if (args.operationId) {
+      args.quotaAccountant?.record({
+        operationId: args.operationId,
+        operation,
+      });
+    }
+  };
 
   const services = createPlaylistManagementServices({
     authResolver: {
@@ -36,27 +50,33 @@ function createServicesFixture(
       },
     },
     youtubeApi: {
-      listPlaylists: async () => [
-        {
-          id: "p1",
-          title: "Playlist 1",
-          description: "Desc",
-          privacyStatus: "private",
-        },
-      ],
+      listPlaylists: async (args) => {
+        accountRead(args, "playlists.list");
+        return [
+          {
+            id: "p1",
+            title: "Playlist 1",
+            description: "Desc",
+            privacyStatus: "private",
+          },
+        ];
+      },
       createPlaylist: async ({ title, description, privacyStatus }) => ({
         id: "p-created",
         title,
         description: description ?? "",
         privacyStatus,
       }),
-      getPlaylistForUpdate: async ({ playlistId }) => ({
-        id: playlistId,
-        title: "Playlist 1",
-        description: "Desc",
-        privacyStatus: "private",
-        channelId: "UC_ACTIVE",
-      }),
+      getPlaylistForUpdate: async ({ playlistId, ...args }) => {
+        accountRead(args, "playlists.list");
+        return {
+          id: playlistId,
+          title: "Playlist 1",
+          description: "Desc",
+          privacyStatus: "private",
+          channelId: "UC_ACTIVE",
+        };
+      },
       updatePlaylist: async ({
         playlistId,
         title,
@@ -68,18 +88,23 @@ function createServicesFixture(
         description,
         privacyStatus,
       }),
-      getPlaylistForDelete: async ({ playlistId }) => ({
-        id: playlistId,
-        channelId: "UC_ACTIVE",
-        title: "Playlist 1",
-      }),
+      getPlaylistForDelete: async ({ playlistId, ...args }) => {
+        accountRead(args, "playlists.list");
+        return {
+          id: playlistId,
+          channelId: "UC_ACTIVE",
+          title: "Playlist 1",
+        };
+      },
       deletePlaylist: async () => undefined,
       addVideoToPlaylist: async () => undefined,
-      listPlaylistItemIdsByVideo: async () =>
-        new Map<string, string[]>([
+      listPlaylistItemIdsByVideo: async (args) => {
+        accountRead(args, "playlistItems.list");
+        return new Map<string, string[]>([
           ["v1", ["pi-1"]],
           ["v2", ["pi-2"]],
-        ]),
+        ]);
+      },
       deletePlaylistItem: async () => undefined,
     },
     writeContext: {
