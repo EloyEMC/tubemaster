@@ -61,6 +61,24 @@ test("in-memory quota accountant records safe entries and accumulates repeated c
   }
 });
 
+test("quota records preserve the resolved channel identity", () => {
+  const accountant = new InMemoryQuotaAccountant();
+
+  accountant.record({
+    operationId: "channel-operation",
+    operation: "videos.list",
+    channelId: "channel-a",
+  });
+
+  assert.deepEqual(accountant.entries()[0], {
+    operationId: "channel-operation",
+    operation: "videos.list",
+    estimatedUnits: 1,
+    timestamp: accountant.entries()[0]?.timestamp,
+    channelId: "channel-a",
+  });
+});
+
 test("channel-aware accountant persists channel identity without changing default scope", async () => {
   const inserted: Array<{ channelId: string | null }> = [];
   const accountant = new DurableQuotaAccountant({

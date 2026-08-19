@@ -49,6 +49,7 @@ export async function getAuthenticatedYoutubeFromTokens(credentials: {
 export type QuotaRequestContext = {
   operationId?: string;
   quotaAccountant?: QuotaAccountant;
+  channelId?: string;
 };
 
 function accountQuota(
@@ -64,6 +65,7 @@ function accountQuota(
       context.quotaAccountant?.record({
         operationId: context.operationId,
         operation,
+        ...(context.channelId ? { channelId: context.channelId } : {}),
       });
     }
   } catch {
@@ -358,12 +360,13 @@ export async function listPlaylistsForAuthenticated(
 ) {
   const channelId = await getMyChannelId(youtube);
   if (!channelId) return [] as PlaylistMetadata[];
+  const channelContext = { ...context, channelId };
 
   const playlists: PlaylistMetadata[] = [];
   let pageToken: string | undefined;
 
   do {
-    accountQuota(context, "playlists.list");
+    accountQuota(channelContext, "playlists.list");
     const res = await youtube.playlists.list({
       part: ["snippet", "status"],
       channelId,

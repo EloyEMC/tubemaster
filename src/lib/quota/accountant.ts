@@ -31,14 +31,17 @@ export type QuotaEntry = {
   channelId?: string;
 };
 
-export type QuotaAccountant = {
-  record(entry: { operationId: string; operation: QuotaOperation }): void;
-};
-
-function validateEntry(entry: {
+export type QuotaRecord = {
   operationId: string;
   operation: QuotaOperation;
-}): void {
+  channelId?: string;
+};
+
+export type QuotaAccountant = {
+  record(entry: QuotaRecord): void;
+};
+
+function validateEntry(entry: QuotaRecord): void {
   if (
     typeof entry.operationId !== "string" ||
     entry.operationId.trim().length === 0
@@ -59,13 +62,14 @@ function validateEntry(entry: {
 export class InMemoryQuotaAccountant implements QuotaAccountant {
   private readonly recordedEntries: QuotaEntry[] = [];
 
-  record(entry: { operationId: string; operation: QuotaOperation }): void {
+  record(entry: QuotaRecord): void {
     validateEntry(entry);
     this.recordedEntries.push({
       operationId: entry.operationId,
       operation: entry.operation,
       estimatedUnits: YOUTUBE_QUOTA_COSTS[entry.operation],
       timestamp: new Date().toISOString(),
+      ...(entry.channelId ? { channelId: entry.channelId } : {}),
     });
   }
 
@@ -143,16 +147,13 @@ export class DurableQuotaAccountant extends InMemoryQuotaAccountant {
         );
       }
 
-      override record(entry: {
-        operationId: string;
-        operation: QuotaOperation;
-      }): void {
-    super.record(entry);
+      override record(entry: QuotaRecord): void {
+        super.record(entry);
     const recordedAt = this.now();
     this.pending.push({
       scopeType: this.userId ? "user" : "global",
       scopeId: this.userId ?? null,
-      channelId: this.channelId ?? null,
+      channelId: entry.channelId ?? this.channelId ?? null,
       bucketStart: getQuotaBucketStart(recordedAt, this.timezone),
       operation: entry.operation,
       estimatedUnits: YOUTUBE_QUOTA_COSTS[entry.operation],
@@ -209,6 +210,7 @@ export function createDurableQuotaAccountantFactory(
 ) {
   return (
     credentials: CredentialsWithCredentialRef,
+    channelId?: string,
   ): DurableQuotaAccountant => {
     const credentialRef = credentials.credentialRef;
     const userId =
@@ -220,6 +222,6 @@ export function createDurableQuotaAccountantFactory(
         ? credentialRef.userId
         : undefined;
 
-    return new DurableQuotaAccountant({ ...options, userId });
+    return new DurableQuotaAccountant({ ...options, userId, channelId });
   };
 }

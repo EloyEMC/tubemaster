@@ -54,6 +54,7 @@ type ServiceDependencies = {
       playlistId: string;
       operationId?: string;
       quotaAccountant?: QuotaAccountant;
+      channelId?: string;
     }): Promise<(Playlist & { channelId: string }) | null>;
     updatePlaylist(args: {
       credentials: ResolvedCredentials;
@@ -67,6 +68,7 @@ type ServiceDependencies = {
       playlistId: string;
       operationId?: string;
       quotaAccountant?: QuotaAccountant;
+      channelId?: string;
     }): Promise<{ id: string; channelId: string; title: string } | null>;
     deletePlaylist(args: {
       credentials: ResolvedCredentials;
@@ -82,6 +84,7 @@ type ServiceDependencies = {
       playlistId: string;
       operationId?: string;
       quotaAccountant?: QuotaAccountant;
+      channelId?: string;
     }): Promise<Map<string, string[]>>;
     deletePlaylistItem(args: {
       credentials: ResolvedCredentials;
@@ -137,9 +140,14 @@ function safeAccount(
   accountant: QuotaAccountant | undefined,
   operationId: string,
   operation: QuotaOperation,
+  channelId?: string,
 ) {
   try {
-    accountant?.record({ operationId, operation });
+        accountant?.record({
+          operationId,
+          operation,
+          ...(channelId ? { channelId } : {}),
+        });
   } catch {
     // Accounting is observational and cannot change the operation outcome.
   }
@@ -245,11 +253,11 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
         });
         const accountant = resolveQuotaAccountant(deps, credentials);
 
-            const playlists = await deps.youtubeApi.listPlaylists({
-              credentials,
-              operationId,
-              quotaAccountant: accountant,
-            });
+        const playlists = await deps.youtubeApi.listPlaylists({
+          credentials,
+          operationId,
+          quotaAccountant: accountant,
+        });
         const output = parseWithSchema(
           playlistListOutputSchema,
           { playlists },
@@ -299,7 +307,12 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
           expectedChannelId: parsedInput.expectedChannelId,
         });
 
-        safeAccount(accountant, operationId, "playlists.insert");
+        safeAccount(
+              accountant,
+              operationId,
+              "playlists.insert",
+              guardrail.expectedChannelId,
+            );
         const playlist = await deps.youtubeApi.createPlaylist({
           credentials,
           title: parsedInput.title.trim(),
@@ -364,11 +377,12 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
         });
 
         const accountant = resolveQuotaAccountant(deps, credentials);
-        const currentPlaylist = await deps.youtubeApi.getPlaylistForUpdate({
+const currentPlaylist = await deps.youtubeApi.getPlaylistForUpdate({
           credentials,
           playlistId: parsedInput.playlistId,
           operationId,
           quotaAccountant: accountant,
+          channelId: guardrail.expectedChannelId,
         });
 
         if (!currentPlaylist) {
@@ -390,7 +404,12 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
           });
         }
 
-        safeAccount(accountant, operationId, "playlists.update");
+        safeAccount(
+              accountant,
+              operationId,
+              "playlists.update",
+              guardrail.expectedChannelId,
+            );
         const playlist = await deps.youtubeApi.updatePlaylist({
           credentials,
           playlistId: parsedInput.playlistId,
@@ -460,11 +479,12 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
         });
 
         const accountant = resolveQuotaAccountant(deps, credentials);
-        const playlist = await deps.youtubeApi.getPlaylistForDelete({
+const playlist = await deps.youtubeApi.getPlaylistForDelete({
           credentials,
           playlistId: parsedInput.playlistId,
           operationId,
           quotaAccountant: accountant,
+          channelId: guardrail.expectedChannelId,
         });
 
         if (!playlist) {
@@ -486,7 +506,12 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
           });
         }
 
-        safeAccount(accountant, operationId, "playlists.delete");
+        safeAccount(
+              accountant,
+              operationId,
+              "playlists.delete",
+              guardrail.expectedChannelId,
+            );
         await deps.youtubeApi.deletePlaylist({
           credentials,
           playlistId: parsedInput.playlistId,

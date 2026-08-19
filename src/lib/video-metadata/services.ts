@@ -34,8 +34,8 @@ type ServiceDependencies = {
     }): Promise<ResolvedCredentials>;
   };
   youtubeApi: {
-        listVideos(args: {
-          credentials: ResolvedCredentials;
+    listVideos(args: {
+      credentials: ResolvedCredentials;
       channelId?: string;
       maxResults?: number;
       operationId?: string;
@@ -56,12 +56,13 @@ type ServiceDependencies = {
       proposal: MetadataSyncProposal;
     }): Promise<void>;
   };
-  transcriptProvider: {
-    getTranscript(args: {
-      credentials: ResolvedCredentials;
-      videoId: string;
-      operationId?: string;
-      quotaAccountant?: QuotaAccountant;
+        transcriptProvider: {
+        getTranscript(args: {
+          credentials: ResolvedCredentials;
+          videoId: string;
+          operationId?: string;
+          quotaAccountant?: QuotaAccountant;
+          channelId?: string;
     }): Promise<TranscriptResult>;
   };
   metadataGenerator: {
@@ -128,7 +129,7 @@ function safeLog(
 
 function safeAccount(
   accountant: QuotaAccountant | undefined,
-  entry: { operationId: string; operation: QuotaOperation },
+  entry: { operationId: string; operation: QuotaOperation; channelId?: string },
 ) {
   try {
     accountant?.record(entry);
@@ -359,8 +360,8 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
         });
         const accountant = resolveQuotaAccountant(deps, credentials);
 
-            const video = await deps.youtubeApi.getVideo({
-              credentials,
+        const video = await deps.youtubeApi.getVideo({
+          credentials,
           videoId: parsedInput.videoId,
           operationId,
           quotaAccountant: accountant,
@@ -454,6 +455,7 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
         safeAccount(accountant, {
           operationId,
           operation: "videos.list",
+          channelId: guardrail.expectedChannelId,
         });
         const metadataContext = await deps.youtubeApi.getVideoMetadataContext({
           credentials,
@@ -491,6 +493,7 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
         safeAccount(accountant, {
           operationId,
           operation: "videos.update",
+          channelId: guardrail.expectedChannelId
         });
         await deps.youtubeApi.applyMetadataProposal({
           credentials,
