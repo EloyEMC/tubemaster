@@ -327,3 +327,78 @@ test('"reports.query" quota cost exists and is a valid QuotaOperation', () => {
   assert.equal(YOUTUBE_QUOTA_COSTS[operation], 1);
   assert.equal(Object.hasOwn(YOUTUBE_QUOTA_COSTS, operation), true);
 });
+
+test("runtime validation rejects unknown operations before recording or persisting", async () => {
+  const inserts: unknown[] = [];
+  const accountant = new DurableQuotaAccountant({
+    repository: {
+      insert: async (entry) => {
+        inserts.push(entry);
+      },
+    },
+  });
+
+  assert.throws(() =>
+    accountant.record({
+      operationId: "invalid-operation",
+      operation: "unknown.operation" as QuotaOperation,
+    }),
+  );
+  await accountant.flush();
+
+  assert.deepEqual(accountant.entries(), []);
+  assert.deepEqual(inserts, []);
+});
+
+test("runtime validation rejects empty operation identities", () => {
+  const accountant = new InMemoryQuotaAccountant();
+
+  assert.throws(() =>
+    accountant.record({ operationId: "   ", operation: "videos.list" }),
+  );
+  assert.deepEqual(accountant.entries(), []);
+});
+
+test("concurrent flushes drain each queued record exactly once", async () => {
+  const inserts: string[] = [];
+  const accountant = new DurableQuotaAccountant({
+    repository: {
+      insert: async ({ operationId }) => {
+        inserts.push(operationId);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      },
+    },
+  });
+  accountant.record({ operationId: "concurrent", operation: "videos.list" });
+
+  await Promise.all([accountant.flush(), accountant.flush()]);
+
+  assert.deepEqual(inserts, ["concurrent"]);
+});
+
+test("records added during a flush remain queued for the next flush", async () => {
+  let releaseFirst!: () => void;
+  const firstPersistence = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  const inserts: string[] = [];
+  const accountant = new DurableQuotaAccountant({
+    repository: {
+      insert: async ({ operationId }) => {
+        inserts.push(operationId);
+        if (operationId === "first") await firstPersistence;
+      },
+    },
+  });
+
+  accountant.record({ operationId: "first", operation: "videos.list" });
+  const firstFlush = accountant.flush();
+  await Promise.resolve();
+  accountant.record({ operationId: "during", operation: "videos.list" });
+  releaseFirst();
+  await firstFlush;
+
+  assert.deepEqual(inserts, ["first"]);
+  await accountant.flush();
+  assert.deepEqual(inserts, ["first", "during"]);
+});

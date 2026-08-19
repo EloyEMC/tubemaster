@@ -1,4 +1,8 @@
-import { quotaUsageRepository, type QuotaUsageRepository } from "./repository";
+import {
+  quotaUsageRepository,
+  type InsertQuotaUsageInput,
+  type QuotaUsageRepository,
+} from "./repository";
 
 export const YOUTUBE_QUOTA_COSTS = {
   "channels.list": 1,
@@ -30,11 +34,27 @@ export type QuotaAccountant = {
   record(entry: { operationId: string; operation: QuotaOperation }): void;
 };
 
+function validateEntry(entry: {
+  operationId: string;
+  operation: QuotaOperation;
+}): void {
+  if (typeof entry.operationId !== "string" || entry.operationId.trim().length === 0) {
+    throw new TypeError("Quota operationId must be a non-empty string");
+  }
+  if (
+    typeof entry.operation !== "string" ||
+    !Object.hasOwn(YOUTUBE_QUOTA_COSTS, entry.operation)
+  ) {
+    throw new TypeError(`Unknown YouTube quota operation: ${String(entry.operation)}`);
+  }
+}
+
 /** Process-local estimate only; this is not authoritative global quota enforcement. */
 export class InMemoryQuotaAccountant implements QuotaAccountant {
   private readonly recordedEntries: QuotaEntry[] = [];
 
   record(entry: { operationId: string; operation: QuotaOperation }): void {
+    validateEntry(entry);
     this.recordedEntries.push({
       operationId: entry.operationId,
       operation: entry.operation,
@@ -88,7 +108,7 @@ export type DurableQuotaAccountantOptions = {
 };
 
 export class DurableQuotaAccountant extends InMemoryQuotaAccountant {
-  private readonly pending: Promise<void>[] = [];
+  private readonly pending: InsertQuotaUsageInput[] = [];
   private readonly repository: QuotaUsageRepository;
   private readonly userId: string | undefined;
   private readonly timezone: string;
@@ -107,12 +127,10 @@ export class DurableQuotaAccountant extends InMemoryQuotaAccountant {
   override record(entry: {
     operationId: string;
     operation: QuotaOperation;
-  }): void {
-    super.record(entry);
-    const recordedAt = this.now();
-    const pending = Promise.resolve()
-      .then(() =>
-        this.repository.insert({
+      }): void {
+        super.record(entry);
+        const recordedAt = this.now();
+        this.pending.push({
           scopeType: this.userId ? "user" : "global",
           scopeId: this.userId ?? null,
           bucketStart: getQuotaBucketStart(recordedAt, this.timezone),
@@ -120,23 +138,31 @@ export class DurableQuotaAccountant extends InMemoryQuotaAccountant {
           estimatedUnits: YOUTUBE_QUOTA_COSTS[entry.operation],
           operationId: entry.operationId,
           recordedAt: recordedAt.toISOString(),
-        }),
-      )
-      .catch((error: unknown) => {
-        try {
-          this.onPersistenceError(error);
-        } catch {
-          // Observability must never turn accounting into a service failure.
-        }
-      });
-    this.pending.push(pending);
-  }
+        });
+      }
 
-  async flush(): Promise<void> {
-    const pending = this.pending.splice(0);
-    await Promise.all(pending);
-  }
-}
+      private async persist(entry: InsertQuotaUsageInput): Promise<void> {
+        try {
+          await this.repository.insert(entry);
+        } catch (error: unknown) {
+          try {
+            this.onPersistenceError(error);
+          } catch {
+            // Observability must never turn accounting into a service failure.
+          }
+        }
+      }
+
+      /**
+       * Persists the records queued before this call exactly once. Records added
+       * while persistence is in flight remain queued for a later flush. Calls
+       * made concurrently observe the same drained queue and do not duplicate it.
+       */
+      async flush(): Promise<void> {
+        const pending = this.pending.splice(0);
+        await Promise.all(pending.map((entry) => this.persist(entry)));
+      }
+    }
 
 type CredentialsWithCredentialRef = {
   credentialRef: unknown;
