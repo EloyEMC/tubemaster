@@ -2,6 +2,7 @@ import { google } from "googleapis";
 import type { youtube_v3 } from "googleapis";
 import { createGoogleOAuthClient } from "./auth";
 import { getUserOAuthTokens, saveUserOAuthTokens } from "./db";
+import type { QuotaAccountant } from "./quota/accountant";
 
 export function createYoutubeClient(
   auth: youtube_v3.Options["auth"]
@@ -45,7 +46,29 @@ export async function getAuthenticatedYoutubeFromTokens(credentials: {
   return createYoutubeClient(oauth2);
 }
 
-export async function getMyChannelId(youtube: youtube_v3.Youtube) {
+type QuotaRequestContext = {
+  operationId?: string;
+  quotaAccountant?: QuotaAccountant;
+};
+
+function accountQuota(
+  context: QuotaRequestContext | undefined,
+  operation: "channels.list" | "videos.list" | "playlistItems.list",
+) {
+  try {
+    if (context?.operationId) {
+      context.quotaAccountant?.record({ operationId: context.operationId, operation });
+    }
+  } catch {
+    // Quota accounting must never change the operation result.
+  }
+}
+
+export async function getMyChannelId(
+  youtube: youtube_v3.Youtube,
+  context?: QuotaRequestContext,
+) {
+  accountQuota(context, "channels.list");
   const res = await youtube.channels.list({
     part: ["id"],
     mine: true,
@@ -57,7 +80,10 @@ export async function listVideosByChannel(args: {
   youtube: youtube_v3.Youtube;
   channelId: string;
   maxResults?: number;
+  operationId?: string;
+  quotaAccountant?: QuotaAccountant;
 }) {
+  accountQuota(args, "channels.list");
   const uploadsPlaylistRes = await args.youtube.channels.list({
     part: ["contentDetails"],
     id: [args.channelId],
@@ -85,6 +111,7 @@ export async function listVideosByChannel(args: {
   let pageToken: string | undefined;
 
   do {
+    accountQuota(args, "playlistItems.list");
     const res = await args.youtube.playlistItems.list({
       part: ["snippet"],
       playlistId: uploadsPlaylistId,
@@ -117,8 +144,10 @@ export async function listVideosByChannel(args: {
 
 export async function getVideoById(
   youtube: youtube_v3.Youtube,
-  videoId: string
+  videoId: string,
+  context?: QuotaRequestContext,
 ) {
+  accountQuota(context, "videos.list");
   const res = await youtube.videos.list({
     part: ["snippet"],
     id: [videoId],

@@ -1,4 +1,5 @@
 import { createGoogleOAuthClient } from "@/lib/auth";
+import type { QuotaAccountant } from "@/lib/quota/accountant";
 import {
   applyVideoMetadataUpdate,
   createYoutubeClient,
@@ -43,9 +44,14 @@ export function createYoutubeApiAdapter() {
       credentials: ResolvedCredentials;
       channelId?: string;
       maxResults?: number;
+      operationId?: string;
+      quotaAccountant?: QuotaAccountant;
     }) {
       const youtube = createAuthorizedClient(args.credentials);
-      const channelId = args.channelId ?? (await getMyChannelId(youtube));
+      const channelId = args.channelId ?? (await getMyChannelId(youtube, {
+        operationId: args.operationId,
+        quotaAccountant: args.quotaAccountant,
+      }));
 
       if (!channelId) {
         throw new DomainError({
@@ -58,16 +64,22 @@ export function createYoutubeApiAdapter() {
         youtube,
         channelId,
         maxResults: args.maxResults,
+        operationId: args.operationId,
+        quotaAccountant: args.quotaAccountant,
       });
     },
 
     async getVideo(args: {
       credentials: ResolvedCredentials;
       videoId: string;
+      operationId?: string;
+      quotaAccountant?: QuotaAccountant;
     }) {
       const youtube = createAuthorizedClient(args.credentials);
-      const video = await getVideoById(youtube, args.videoId);
-
+      const video = await getVideoById(youtube, args.videoId, {
+        operationId: args.operationId,
+        quotaAccountant: args.quotaAccountant,
+      });
       if (!video) {
         throw new DomainError({
           code: "not_found",

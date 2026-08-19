@@ -34,14 +34,18 @@ type ServiceDependencies = {
     }): Promise<ResolvedCredentials>;
   };
   youtubeApi: {
-    listVideos(args: {
-      credentials: ResolvedCredentials;
+        listVideos(args: {
+          credentials: ResolvedCredentials;
       channelId?: string;
       maxResults?: number;
+      operationId?: string;
+      quotaAccountant?: QuotaAccountant;
     }): Promise<VideoMetadataItem[]>;
     getVideo(args: {
       credentials: ResolvedCredentials;
       videoId: string;
+      operationId?: string;
+      quotaAccountant?: QuotaAccountant;
     }): Promise<VideoMetadataItem>;
     getVideoMetadataContext(args: {
       credentials: ResolvedCredentials;
@@ -255,10 +259,13 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
           requiredScopes: [YOUTUBE_READ_SCOPE],
         });
 
+        const accountant = resolveQuotaAccountant(deps, credentials);
         const videos = await deps.youtubeApi.listVideos({
           credentials,
           channelId: parsedInput.channelId,
           maxResults: parsedInput.maxResults,
+          operationId,
+          quotaAccountant: accountant,
         });
 
         const output = parseWithSchema(
@@ -352,9 +359,11 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
         });
         const accountant = resolveQuotaAccountant(deps, credentials);
 
-        const video = await deps.youtubeApi.getVideo({
-          credentials,
+            const video = await deps.youtubeApi.getVideo({
+              credentials,
           videoId: parsedInput.videoId,
+          operationId,
+          quotaAccountant: accountant,
         });
 
         const transcriptResult = await deps.transcriptProvider.getTranscript({
