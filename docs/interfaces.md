@@ -2,7 +2,7 @@
 
 <- [Back to README](../README.md)
 
-Use this as the operational reference after setup: TubeMaster covers channel workflows across metadata, transcripts, playlists, rules, and automation surfaces.
+Use this as the operational reference after setup: TubeMaster covers channel workflows across metadata, transcripts, playlists, rules, quota reporting, and automation surfaces. Quota values are observational estimates from recorded operations; they do not enforce or replace YouTube's authoritative quota accounting.
 
 ## Web UI (`http://localhost:3000`)
 
@@ -22,6 +22,9 @@ Use this as the operational reference after setup: TubeMaster covers channel wor
   - Create rule (field + match type + target playlist).
   - List/delete rules.
   - Run matching engine (`/api/run`) over recent videos.
+- **Quota usage** (`/dashboard/quota`)
+  - View estimated units and operation counts grouped by day, operation, and operation ID.
+  - Estimates are read-only and observational; they do not block YouTube requests.
 
 ---
 
@@ -63,6 +66,14 @@ npm run cli:video-metadata -- playlist add --playlistId <PLAYLIST_ID> --videoIds
 npm run cli:video-metadata -- playlist remove --playlistId <PLAYLIST_ID> --videoIds <VIDEO1,VIDEO2,...> [--userId <USER_ID>]
 ```
 
+### Quota usage
+
+```bash
+npm run cli:video-metadata -- quota usage
+```
+
+`quota usage` uses the active authenticated user and accepts no user or scope override. It returns the standard JSON envelope with grouped estimated usage.
+
 ---
 
 ## MCP server (`npm run mcp:video-metadata`)
@@ -84,8 +95,10 @@ Key MCP tools:
 - Playlist tools:
   - `playlist_list`, `playlist_create`, `playlist_update`, `playlist_delete`
   - `playlist_add_videos`, `playlist_remove_videos`
+- Quota tool:
+  - `quota_usage` (read-only, empty input, active-user scope only)
 
-Most tools accept optional `credentialRef`; if omitted, server falls back to active local auth context.
+Most tools accept optional `credentialRef`; if omitted, server falls back to active local auth context. `quota_usage` intentionally does not accept a credential or scope override.
 
 ---
 
@@ -102,9 +115,17 @@ All routes are App Router handlers and require authenticated session user.
 - `POST /api/video-metadata/apply`
   - body: `{ "videoId": "...", "finalTitle": "...", "description": "...", "expectedChannelId": "UC...", "dryRun": true|false }`
 
-### Playlist / video API used by UI
+    ### Quota usage API
 
-- `GET /api/youtube/videos`
+    - `GET /api/quota/usage`
+      - Optional filters: `bucketStart=YYYY-MM-DD`, `operation`, `operationId`.
+      - Always scopes results to the authenticated session user; `scopeType` and `scopeId` cannot be supplied by callers.
+      - Returns `401` without a session, `422` for invalid filters, and `500` for repository failures.
+      - Response values are estimated recorded usage, not authoritative remaining YouTube quota.
+
+    ### Playlist / video API used by UI
+
+    - `GET /api/youtube/videos`
 - `GET /api/youtube/playlists`
 - `POST /api/youtube/create-playlist`
 - `POST /api/youtube/add-to-playlist`
