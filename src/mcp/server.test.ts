@@ -845,12 +845,57 @@ test("MCP playlist_create keeps explicit credentialRef precedence", async () => 
   });
 
   const payload = result.structuredContent as {
-    playlist: { id: string; title: string; description: string; privacyStatus: string };
+    playlist: {
+      id: string;
+      title: string;
+      description: string;
+      privacyStatus: string;
+    };
   };
   assert.equal(payload.playlist.id, "p-created");
   assert.equal(payload.playlist.title, "My Playlist");
   assert.equal(payload.playlist.description, "Roadtrip videos");
   assert.equal(payload.playlist.privacyStatus, "private");
+});
+
+test("MCP playlist_create rejects missing expectedChannelId before authorization", async () => {
+  let authCalled = false;
+  let coreCalled = false;
+  const core = makeCoreStub();
+  core.createPlaylist = async () => {
+    coreCalled = true;
+    return {
+      playlist: {
+        id: "p-created",
+        title: "My Playlist",
+        description: "",
+        privacyStatus: "private" as const,
+      },
+    };
+  };
+
+  const handlers = createMcpToolHandlers(core, {
+    ...makeAuthStub(),
+    resolveEffectiveCredentialRef: async () => {
+      authCalled = true;
+      return { userId: "active-user" };
+    },
+  });
+  const result = await handlers.playlistCreate({
+    title: "My Playlist",
+  });
+
+  assert.equal(result.isError, true);
+  assert.equal(authCalled, false);
+  assert.equal(coreCalled, false);
+  const payload = JSON.parse(result.content[0]?.text ?? "{}");
+  assert.equal(payload.error.code, "validation_failed");
+  assert.equal(
+    payload.error.details.some((detail: { path: string }) =>
+      detail.path.includes("expectedChannelId"),
+    ),
+    true,
+  );
 });
 
 test("MCP playlist_update enforces patch schema and forwards payload", async () => {
@@ -872,6 +917,7 @@ test("MCP playlist_update enforces patch schema and forwards payload", async () 
   const result = await handlers.playlistUpdate({
     playlistId: "p-updated",
     expectedChannelId: "UC_ACTIVE",
+    confirmed: true,
     description: "Updated description",
     privacyStatus: "public",
   });
@@ -894,7 +940,87 @@ test("MCP playlist_update enforces patch schema and forwards payload", async () 
   });
 });
 
-test("MCP playlist_delete enforces schema and forwards expectedChannelId", async () => {
+test("MCP playlist_update requires explicit confirmation before auth/core", async () => {
+  let authCalled = false;
+  let coreCalled = false;
+  const core = makeCoreStub();
+  core.updatePlaylist = async () => {
+    coreCalled = true;
+    return {
+      playlist: {
+        id: "p-update",
+        title: "Updated",
+        description: "",
+        privacyStatus: "private" as const,
+      },
+    };
+  };
+  const handlers = createMcpToolHandlers(core, {
+    ...makeAuthStub(),
+    resolveEffectiveCredentialRef: async () => {
+      authCalled = true;
+      return { userId: "active-user" };
+    },
+  });
+
+  for (const input of [
+    {
+      playlistId: "p-update",
+      expectedChannelId: "UC_ACTIVE",
+      title: "Updated",
+    },
+    {
+      playlistId: "p-update",
+      expectedChannelId: "UC_ACTIVE",
+      confirmed: false,
+      title: "Updated",
+    },
+  ]) {
+    const result = await handlers.playlistUpdate(input);
+    assert.equal(result.isError, true);
+    const payload = JSON.parse(result.content[0]?.text ?? "{}");
+    assert.equal(payload.error.code, "validation_failed");
+  }
+
+  assert.equal(authCalled, false);
+  assert.equal(coreCalled, false);
+});
+
+test("MCP playlist_delete requires explicit confirmation before auth/core", async () => {
+  let authCalled = false;
+  let coreCalled = false;
+  const core = makeCoreStub();
+  core.deletePlaylist = async () => {
+    coreCalled = true;
+    return { deleted: true, playlistId: "p-delete" };
+  };
+  const handlers = createMcpToolHandlers(core, {
+    ...makeAuthStub(),
+    resolveEffectiveCredentialRef: async () => {
+      authCalled = true;
+      return { userId: "active-user" };
+    },
+  });
+
+  for (const input of [
+    { playlistId: "p-delete", expectedChannelId: "UC_ACTIVE" },
+    {
+      playlistId: "p-delete",
+      expectedChannelId: "UC_ACTIVE",
+      confirmed: false,
+    },
+  ]) {
+    const result = await handlers.playlistDelete(input);
+    assert.equal(result.isError, true);
+    const payload = JSON.parse(result.content[0]?.text ?? "{}");
+    assert.equal(payload.error.code, "validation_failed");
+  }
+
+  assert.equal(authCalled, false);
+  assert.equal(coreCalled, false);
+});
+
+test("MCP playlist_delete forwards confirmed input and returns success", async () => {
   let capturedInput: unknown;
   const core = makeCoreStub();
   core.deletePlaylist = async (input: unknown) => {
@@ -1060,7 +1186,8 @@ test("MCP apply returns unresolved guardrail details in structured error", async
   core.applyMetadata = async () => {
     throw new DomainError({
       code: "WRITE_CHANNEL_UNRESOLVED",
-      message: "Cannot resolve active write channel for the current OAuth session",
+      message:
+        "Cannot resolve active write channel for the current OAuth session",
       details: {
         expectedChannelId: "UC_EXPECTED",
       },
@@ -1128,6 +1255,7 @@ test("MCP playlist_update fails closed on guardrail mismatch with stable details
   const result = await handlers.playlistUpdate({
     playlistId: "p-update",
     expectedChannelId: "UC_EXPECTED",
+    confirmed: true,
     title: "Updated",
   });
 
@@ -1175,7 +1303,8 @@ test("MCP playlist_delete fails closed on unresolved channel with stable details
   core.deletePlaylist = async () => {
     throw new DomainError({
       code: "WRITE_CHANNEL_UNRESOLVED",
-      message: "Cannot resolve active write channel for the current OAuth session",
+      message:
+        "Cannot resolve active write channel for the current OAuth session",
       details: {
         expectedChannelId: "UC_ACTIVE",
       },
@@ -1186,6 +1315,7 @@ test("MCP playlist_delete fails closed on unresolved channel with stable details
   const result = await handlers.playlistDelete({
     playlistId: "p-delete",
     expectedChannelId: "UC_ACTIVE",
+    confirmed: true,
   });
 
   assert.equal(result.isError, true);

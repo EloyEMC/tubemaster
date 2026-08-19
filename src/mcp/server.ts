@@ -184,11 +184,16 @@ export const authUserSelectInputSchema = z
   })
   .strict();
 
+const playlistCreateToolInputSchema = playlistCreateInputSchema
+  .extend({ expectedChannelId: z.string().min(1) })
+  .partial({ credentialRef: true });
+
 const playlistUpdateToolInputSchema = z
   .object({
     credentialRef: credentialSchema.optional(),
     playlistId: z.string().min(1),
     expectedChannelId: z.string().min(1),
+    confirmed: z.literal(true),
     title: z.string().trim().min(1).optional(),
     description: z.string().optional(),
     privacyStatus: z.enum(["private", "public", "unlisted"]).optional(),
@@ -205,6 +210,10 @@ const playlistUpdateToolInputSchema = z
       path: ["title"],
     },
   );
+
+const playlistDeleteToolInputSchema = playlistDeleteInputSchema
+  .extend({ confirmed: z.literal(true) })
+  .partial({ credentialRef: true });
 
 type QuotaReader = {
   summarizeQuotaUsage(
@@ -451,9 +460,7 @@ export function createMcpToolHandlers(
     },
 
     async playlistCreate(input: unknown): Promise<ToolResponse> {
-      const parsedInput = playlistCreateInputSchema
-        .partial({ credentialRef: true })
-        .safeParse(input);
+      const parsedInput = playlistCreateToolInputSchema.safeParse(input);
       if (!parsedInput.success) {
         return mapValidationErrorResult(parsedInput.error);
       }
@@ -473,9 +480,7 @@ export function createMcpToolHandlers(
     },
 
     async playlistDelete(input: unknown): Promise<ToolResponse> {
-      const parsedInput = playlistDeleteInputSchema
-        .partial({ credentialRef: true })
-        .safeParse(input);
+      const parsedInput = playlistDeleteToolInputSchema.safeParse(input);
       if (!parsedInput.success) {
         return mapValidationErrorResult(parsedInput.error);
       }
@@ -504,8 +509,10 @@ export function createMcpToolHandlers(
         const credentialRef = await resolveCredentialRef(
           parsedInput.data.credentialRef,
         );
+        const { confirmed, ...updateInput } = parsedInput.data;
+        void confirmed;
         const result = await core.updatePlaylist({
-          ...parsedInput.data,
+          ...updateInput,
           credentialRef,
         });
         return toolSuccessResult(result as Record<string, unknown>);
@@ -688,7 +695,7 @@ export function createMcpServer(
     {
       description:
         "Create a YouTube playlist. credentialRef is OPTIONAL and falls back to active local auth context.",
-      inputSchema: playlistCreateInputSchema.partial({ credentialRef: true }),
+      inputSchema: playlistCreateToolInputSchema,
     },
     (args) => handlers.playlistCreate(args),
   );
@@ -710,7 +717,7 @@ export function createMcpServer(
     {
       description:
         "Delete a playlist after strict write-channel guardrail validation. credentialRef is OPTIONAL and falls back to active local auth context.",
-      inputSchema: playlistDeleteInputSchema.partial({ credentialRef: true }),
+      inputSchema: playlistDeleteToolInputSchema,
     },
     (args) => handlers.playlistDelete(args),
   );
