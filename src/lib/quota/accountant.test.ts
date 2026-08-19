@@ -9,7 +9,7 @@ import {
   resolveQuotaTimezone,
   type QuotaOperation,
 } from "./accountant";
-import { db } from "../db";
+import { databaseInitialization, db } from "../db";
 import {
   listQuotaUsage,
   quotaUsageRepository,
@@ -61,11 +61,46 @@ test("in-memory quota accountant records safe entries and accumulates repeated c
   }
 });
 
+test("channel-aware accountant persists channel identity without changing default scope", async () => {
+  const inserted: Array<{ channelId: string | null }> = [];
+  const accountant = new DurableQuotaAccountant({
+    userId: "user-a",
+    channelId: "channel-a",
+    repository: {
+      insert: async (entry) => {
+        inserted.push({ channelId: entry.channelId ?? null });
+      },
+    },
+  });
+
+  accountant.record({ operationId: "channel-aware", operation: "videos.list" });
+  await accountant.flush();
+
+  assert.deepEqual(inserted, [{ channelId: "channel-a" }]);
+  assert.deepEqual(accountant.entries()[0]?.channelId, "channel-a");
+
+  const legacyInserted: Array<{ channelId: string | null }> = [];
+  const legacy = new DurableQuotaAccountant({
+    repository: {
+      insert: async (entry) => {
+        legacyInserted.push({ channelId: entry.channelId ?? null });
+      },
+    },
+  });
+  legacy.record({ operationId: "legacy", operation: "videos.list" });
+  await legacy.flush();
+  assert.deepEqual(legacyInserted, [{ channelId: null }]);
+});
+
 test("default accountant factory derives durable user and global scopes from resolved credentials", async () => {
   const inserted: Array<{ scopeType: string; scopeId: string | null }> = [];
   const factory = createDurableQuotaAccountantFactory({
     repository: {
-      insert: async (entry: { scopeType: string; scopeId: string | null }) => {
+      insert: async (entry: {
+        scopeType: string;
+        scopeId: string | null;
+        channelId?: string | null;
+          }) => {
         inserted.push({ scopeType: entry.scopeType, scopeId: entry.scopeId });
       },
     },
@@ -294,7 +329,65 @@ test("quota usage summaries aggregate by bucket, scope, and operation", async ()
   );
 });
 
+test("quota usage repository preserves nullable channel rows and summarizes by channel", async () => {
+  const prefix = `channel-${Date.now()}-${Math.random()}`;
+  await quotaUsageRepository.insert({
+    id: `${prefix}-legacy`,
+    scopeType: "user",
+    scopeId: prefix,
+    channelId: null,
+    bucketStart: "2099-02-01",
+    operation: "videos.list",
+    estimatedUnits: 1,
+    operationId: `${prefix}-legacy-operation`,
+    recordedAt: "2099-02-01T00:00:00.000Z",
+  });
+  await quotaUsageRepository.insert({
+    id: `${prefix}-channel`,
+    scopeType: "user",
+    scopeId: prefix,
+    channelId: "channel-a",
+    bucketStart: "2099-02-01",
+    operation: "videos.list",
+    estimatedUnits: 2,
+    operationId: `${prefix}-channel-operation`,
+    recordedAt: "2099-02-01T00:01:00.000Z",
+  });
+
+  assert.equal(
+    (await listQuotaUsage({ operationId: `${prefix}-channel-operation` }))[0]
+      ?.channelId,
+    "channel-a",
+  );
+  assert.deepEqual(
+    await summarizeQuotaUsage({ scopeId: prefix }),
+    [
+      {
+        bucketStart: "2099-02-01",
+        scopeType: "user",
+        scopeId: prefix,
+        operation: "videos.list",
+        operationId: `${prefix}-legacy-operation`,
+        operationCount: 1,
+        estimatedUnits: 1,
+      },
+      {
+        bucketStart: "2099-02-01",
+        scopeType: "user",
+        scopeId: prefix,
+        channelId: "channel-a",
+        operation: "videos.list",
+        operationId: `${prefix}-channel-operation`,
+        operationCount: 1,
+        estimatedUnits: 2,
+      },
+    ],
+  );
+});
+
 test("quota usage schema has migration-safe reporting indexes", async () => {
+  await databaseInitialization;
+  await databaseInitialization;
   const indexes = await db.all<{ name: string }>(sql`
     SELECT name
     FROM sqlite_master
@@ -305,7 +398,11 @@ test("quota usage schema has migration-safe reporting indexes", async () => {
 
   assert.deepEqual(
     indexes.map((index) => index.name).sort(),
-    ["youtube_quota_usage_operation_id_idx", "youtube_quota_usage_scope_date_operation_idx"].sort(),
+    [
+      "youtube_quota_usage_operation_id_idx",
+      "youtube_quota_usage_scope_date_operation_idx",
+      "youtube_quota_usage_scope_channel_date_operation_idx",
+    ].sort(),
   );
 });
 

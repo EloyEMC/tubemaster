@@ -5,6 +5,7 @@ export type QuotaUsageRow = {
   id: string;
   scopeType: string;
   scopeId: string | null;
+  channelId: string | null;
   bucketStart: string;
   operation: string;
   estimatedUnits: number;
@@ -12,7 +13,10 @@ export type QuotaUsageRow = {
   recordedAt: string;
 };
 
-export type InsertQuotaUsageInput = Omit<QuotaUsageRow, "id"> & { id?: string };
+export type InsertQuotaUsageInput = Omit<QuotaUsageRow, "id" | "channelId"> & {
+  id?: string;
+  channelId?: string | null;
+};
 
 export type QuotaUsageRepository = {
   insert(input: InsertQuotaUsageInput): Promise<void>;
@@ -24,6 +28,7 @@ export const quotaUsageRepository: QuotaUsageRepository = {
       id: input.id ?? crypto.randomUUID(),
       scopeType: input.scopeType,
       scopeId: input.scopeId,
+      channelId: input.channelId ?? null,
       bucketStart: input.bucketStart,
       operation: input.operation,
       estimatedUnits: input.estimatedUnits,
@@ -38,6 +43,7 @@ export async function listQuotaUsage(
     operationId?: string;
     scopeType?: string;
     scopeId?: string | null;
+    channelId?: string | null;
   } = {},
 ): Promise<QuotaUsageRow[]> {
   const conditions = [];
@@ -51,11 +57,18 @@ export async function listQuotaUsage(
         ? isNull(quotaUsage.scopeId)
         : eq(quotaUsage.scopeId, filter.scopeId),
     );
-  }
+      }
+      if (filter.channelId !== undefined) {
+        conditions.push(
+          filter.channelId === null
+            ? isNull(quotaUsage.channelId)
+            : eq(quotaUsage.channelId, filter.channelId),
+        );
+      }
 
-  const rows = await db
-    .select()
-    .from(quotaUsage)
+      const rows = await db
+        .select()
+        .from(quotaUsage)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(asc(quotaUsage.recordedAt), asc(quotaUsage.id));
 
@@ -66,6 +79,7 @@ export type QuotaUsageSummary = {
   bucketStart: string;
   scopeType: string;
   scopeId: string | null;
+  channelId?: string;
   operation: string;
   operationId: string;
   operationCount: number;
@@ -75,6 +89,7 @@ export type QuotaUsageSummary = {
 export type QuotaUsageSummaryFilter = {
   scopeType?: string;
   scopeId?: string | null;
+  channelId?: string | null;
   bucketStart?: string;
   operation?: string;
   operationId?: string;
@@ -93,6 +108,13 @@ export async function summarizeQuotaUsage(
         : eq(quotaUsage.scopeId, filter.scopeId),
     );
   }
+  if (filter.channelId !== undefined) {
+    conditions.push(
+      filter.channelId === null
+        ? isNull(quotaUsage.channelId)
+        : eq(quotaUsage.channelId, filter.channelId),
+    );
+  }
   if (filter.bucketStart !== undefined)
     conditions.push(eq(quotaUsage.bucketStart, filter.bucketStart));
   if (filter.operation !== undefined)
@@ -105,6 +127,7 @@ export async function summarizeQuotaUsage(
       bucketStart: quotaUsage.bucketStart,
       scopeType: quotaUsage.scopeType,
       scopeId: quotaUsage.scopeId,
+      channelId: quotaUsage.channelId,
       operation: quotaUsage.operation,
       operationId: quotaUsage.operationId,
       operationCount: sql<number>`count(*)`,
@@ -116,6 +139,7 @@ export async function summarizeQuotaUsage(
       quotaUsage.bucketStart,
       quotaUsage.scopeType,
       quotaUsage.scopeId,
+      quotaUsage.channelId,
       quotaUsage.operation,
       quotaUsage.operationId,
     )
@@ -123,9 +147,12 @@ export async function summarizeQuotaUsage(
       asc(quotaUsage.bucketStart),
       asc(quotaUsage.scopeType),
       asc(quotaUsage.scopeId),
+      asc(quotaUsage.channelId),
       asc(quotaUsage.operation),
       asc(quotaUsage.operationId),
     );
 
-  return rows;
+  return rows.map(({ channelId, ...row }) =>
+    channelId === null ? row : { ...row, channelId },
+  );
 }

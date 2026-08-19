@@ -28,6 +28,7 @@ export type QuotaEntry = {
   operation: QuotaOperation;
   estimatedUnits: number;
   timestamp: string;
+  channelId?: string;
 };
 
 export type QuotaAccountant = {
@@ -38,14 +39,19 @@ function validateEntry(entry: {
   operationId: string;
   operation: QuotaOperation;
 }): void {
-  if (typeof entry.operationId !== "string" || entry.operationId.trim().length === 0) {
+  if (
+    typeof entry.operationId !== "string" ||
+    entry.operationId.trim().length === 0
+  ) {
     throw new TypeError("Quota operationId must be a non-empty string");
   }
   if (
     typeof entry.operation !== "string" ||
     !Object.hasOwn(YOUTUBE_QUOTA_COSTS, entry.operation)
   ) {
-    throw new TypeError(`Unknown YouTube quota operation: ${String(entry.operation)}`);
+    throw new TypeError(
+      `Unknown YouTube quota operation: ${String(entry.operation)}`,
+    );
   }
 }
 
@@ -101,6 +107,7 @@ export function getQuotaBucketStart(
 
 export type DurableQuotaAccountantOptions = {
   userId?: string;
+  channelId?: string;
   timezone?: string;
   now?: () => Date;
   repository?: QuotaUsageRepository;
@@ -111,6 +118,7 @@ export class DurableQuotaAccountant extends InMemoryQuotaAccountant {
   private readonly pending: InsertQuotaUsageInput[] = [];
   private readonly repository: QuotaUsageRepository;
   private readonly userId: string | undefined;
+  private readonly channelId: string | undefined;
   private readonly timezone: string;
   private readonly now: () => Date;
   private readonly onPersistenceError: (error: unknown) => void;
@@ -121,20 +129,30 @@ export class DurableQuotaAccountant extends InMemoryQuotaAccountant {
     super();
     this.repository = options.repository ?? quotaUsageRepository;
     this.userId = options.userId;
+    this.channelId = options.channelId;
     this.timezone = resolveQuotaTimezone(options.timezone);
     this.now = options.now ?? (() => new Date());
     this.onPersistenceError = options.onPersistenceError ?? (() => undefined);
   }
 
-  override record(entry: {
-    operationId: string;
-    operation: QuotaOperation;
-  }): void {
+      override entries(): readonly QuotaEntry[] {
+        return super.entries().map((entry) =>
+          this.channelId === undefined
+            ? entry
+            : { ...entry, channelId: this.channelId },
+        );
+      }
+
+      override record(entry: {
+        operationId: string;
+        operation: QuotaOperation;
+      }): void {
     super.record(entry);
     const recordedAt = this.now();
     this.pending.push({
       scopeType: this.userId ? "user" : "global",
       scopeId: this.userId ?? null,
+      channelId: this.channelId ?? null,
       bucketStart: getQuotaBucketStart(recordedAt, this.timezone),
       operation: entry.operation,
       estimatedUnits: YOUTUBE_QUOTA_COSTS[entry.operation],
@@ -144,43 +162,43 @@ export class DurableQuotaAccountant extends InMemoryQuotaAccountant {
     void this.flush().catch(() => undefined);
   }
 
-      private async persist(entry: InsertQuotaUsageInput): Promise<void> {
-        try {
-          await this.repository.insert(entry);
-        } catch (error: unknown) {
-          try {
-            this.onPersistenceError(error);
-          } catch {
-            // Observability must never turn accounting into a service failure.
-          }
-        }
-      }
-
-      /**
-       * Persists the records queued before this call exactly once. Records added
-       * while persistence is in flight remain queued for a later flush. Calls
-       * made concurrently observe the same drained queue and do not duplicate it.
-       */
-      async flush(): Promise<void> {
-        if (this.flushInFlight) {
-          this.flushRequested = true;
-          return this.flushInFlight;
-        }
-
-        const pending = this.pending.splice(0);
-        this.flushInFlight = Promise.all(
-          pending.map((entry) => this.persist(entry)),
-        ).then(async () => {
-          this.flushInFlight = undefined;
-          if (this.flushRequested || this.pending.length > 0) {
-            this.flushRequested = false;
-            await this.flush();
-          }
-        });
-
-        return this.flushInFlight;
+  private async persist(entry: InsertQuotaUsageInput): Promise<void> {
+    try {
+      await this.repository.insert(entry);
+    } catch (error: unknown) {
+      try {
+        this.onPersistenceError(error);
+      } catch {
+        // Observability must never turn accounting into a service failure.
       }
     }
+  }
+
+  /**
+   * Persists the records queued before this call exactly once. Records added
+   * while persistence is in flight remain queued for a later flush. Calls
+   * made concurrently observe the same drained queue and do not duplicate it.
+   */
+  async flush(): Promise<void> {
+    if (this.flushInFlight) {
+      this.flushRequested = true;
+      return this.flushInFlight;
+    }
+
+    const pending = this.pending.splice(0);
+    this.flushInFlight = Promise.all(
+      pending.map((entry) => this.persist(entry)),
+    ).then(async () => {
+      this.flushInFlight = undefined;
+      if (this.flushRequested || this.pending.length > 0) {
+        this.flushRequested = false;
+        await this.flush();
+      }
+    });
+
+    return this.flushInFlight;
+  }
+}
 
 type CredentialsWithCredentialRef = {
   credentialRef: unknown;
