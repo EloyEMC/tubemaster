@@ -1,7 +1,9 @@
 import { getSelectedChannelId, setSelectedChannelId } from "@/lib/db";
+import { createDurableQuotaAccountantFactory } from "@/lib/quota/accountant";
 import { createWriteContextYoutubeApiAdapter } from "@/lib/write-context/adapters/youtube-api";
 import { createWriteContextService } from "@/lib/write-context/service";
 import { resolveGoogleCredentials } from "@/lib/video-metadata/adapters/google-auth";
+import { createDefaultLogger } from "@/lib/video-metadata/adapters/logger";
 import { createPlaylistYoutubeApiAdapter } from "./adapters/youtube-api";
 import { createPlaylistManagementServices } from "./services";
 
@@ -27,7 +29,11 @@ export function createPlaylistManagementCore() {
     channelSelectionStore: {
       setSelectedChannelId,
     },
+    logger: createDefaultLogger(),
+    quotaAccountantFactory: createDurableQuotaAccountantFactory(),
   });
 }
 
-export type PlaylistManagementCore = ReturnType<typeof createPlaylistManagementCore>;
+export type PlaylistManagementCore = ReturnType<
+  typeof createPlaylistManagementCore
+>;
