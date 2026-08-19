@@ -2,9 +2,25 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DomainError } from "./contracts";
 import { createPlaylistManagementServices } from "./services";
+import { InMemoryQuotaAccountant } from "../quota/accountant";
 
-function createServicesFixture() {
-  const authCalls: Array<{ credentialRef: unknown; requiredScopes: readonly string[] }> = [];
+function createServicesFixture(
+  options: {
+    accountant?: InMemoryQuotaAccountant;
+    operationIdFactory?: () => string;
+    logger?: {
+      info(payload: { event: string; context?: Record<string, unknown> }): void;
+      error(payload: {
+        event: string;
+        context?: Record<string, unknown>;
+      }): void;
+    };
+  } = {},
+) {
+  const authCalls: Array<{
+    credentialRef: unknown;
+    requiredScopes: readonly string[];
+  }> = [];
 
   const services = createPlaylistManagementServices({
     authResolver: {
@@ -21,7 +37,12 @@ function createServicesFixture() {
     },
     youtubeApi: {
       listPlaylists: async () => [
-        { id: "p1", title: "Playlist 1", description: "Desc", privacyStatus: "private" },
+        {
+          id: "p1",
+          title: "Playlist 1",
+          description: "Desc",
+          privacyStatus: "private",
+        },
       ],
       createPlaylist: async ({ title, description, privacyStatus }) => ({
         id: "p-created",
@@ -36,7 +57,12 @@ function createServicesFixture() {
         privacyStatus: "private",
         channelId: "UC_ACTIVE",
       }),
-      updatePlaylist: async ({ playlistId, title, description, privacyStatus }) => ({
+      updatePlaylist: async ({
+        playlistId,
+        title,
+        description,
+        privacyStatus,
+      }) => ({
         id: playlistId,
         title,
         description,
@@ -67,10 +93,159 @@ function createServicesFixture() {
     channelSelectionStore: {
       setSelectedChannelId: async () => undefined,
     },
+    logger: options.logger,
+    operationIdFactory: options.operationIdFactory,
+    quotaAccountant: options.accountant,
   });
 
   return { services, authCalls };
 }
+
+test("playlist operations emit correlated lifecycle events without leaking unsafe context", async () => {
+  const events: Array<{ event: string; context?: Record<string, unknown> }> =
+    [];
+  const { services } = createServicesFixture({
+    operationIdFactory: () => "playlist-audit-operation",
+    logger: {
+      info: (payload) => events.push(payload),
+      error: (payload) => events.push(payload),
+    },
+  });
+
+  await services.listPlaylists({ credentialRef: { userId: "user-1" } });
+  await services.createPlaylist({
+    credentialRef: { userId: "user-1" },
+    expectedChannelId: "UC_ACTIVE",
+    title: "Secret title",
+    description: "Secret description",
+  });
+  await services.updatePlaylist({
+    credentialRef: { userId: "user-1" },
+    expectedChannelId: "UC_ACTIVE",
+    playlistId: "p1",
+    title: "Updated title",
+  });
+  await services.deletePlaylist({
+    credentialRef: { userId: "user-1" },
+    expectedChannelId: "UC_ACTIVE",
+    playlistId: "p1",
+  });
+  await services.addVideosToPlaylist({
+    credentialRef: { userId: "user-1" },
+    playlistId: "p1",
+    videoIds: ["v1"],
+  });
+  await services.removeVideosFromPlaylist({
+    credentialRef: { userId: "user-1" },
+    playlistId: "p1",
+    videoIds: ["v1"],
+  });
+
+  assert.deepEqual(
+    events.map(({ event }) => event),
+    [
+      "playlist_management.list.started",
+      "playlist_management.list.success",
+      "playlist_management.create.started",
+      "playlist_management.create.success",
+      "playlist_management.update.started",
+      "playlist_management.update.success",
+      "playlist_management.delete.started",
+      "playlist_management.delete.success",
+      "playlist_management.add.started",
+      "playlist_management.add.success",
+      "playlist_management.remove.started",
+      "playlist_management.remove.success",
+    ],
+  );
+  assert.equal(
+    events.every(
+      (entry) => entry.context?.operationId === "playlist-audit-operation",
+    ),
+    true,
+  );
+  assert.equal(
+    events.some(
+      (entry) =>
+        JSON.stringify(entry).includes("Secret title") ||
+        JSON.stringify(entry).includes("Secret description"),
+    ),
+    false,
+  );
+});
+
+test("playlist logger failures do not change output", async () => {
+  const { services } = createServicesFixture({
+    logger: {
+      info: () => {
+        throw new Error("logger failure");
+      },
+      error: () => {
+        throw new Error("logger failure");
+      },
+    },
+  });
+
+  const result = await services.listPlaylists({
+    credentialRef: { userId: "user-1" },
+  });
+  assert.equal(result.playlists.length, 1);
+});
+
+test("playlist operations account attempted requests under one operation", async () => {
+  const accountant = new InMemoryQuotaAccountant();
+  const { services } = createServicesFixture({
+    accountant,
+    operationIdFactory: () => "playlist-operation",
+  });
+
+  await services.listPlaylists({ credentialRef: { userId: "user-1" } });
+  await services.createPlaylist({
+    credentialRef: { userId: "user-1" },
+    expectedChannelId: "UC_ACTIVE",
+    title: "New",
+    privacyStatus: "private",
+  });
+  await services.updatePlaylist({
+    credentialRef: { userId: "user-1" },
+    expectedChannelId: "UC_ACTIVE",
+    playlistId: "p1",
+    title: "Updated playlist",
+  });
+  await services.deletePlaylist({
+    credentialRef: { userId: "user-1" },
+    expectedChannelId: "UC_ACTIVE",
+    playlistId: "p1",
+  });
+  await services.addVideosToPlaylist({
+    credentialRef: { userId: "user-1" },
+    playlistId: "p1",
+    videoIds: ["v1", "v2"],
+  });
+  await services.removeVideosFromPlaylist({
+    credentialRef: { userId: "user-1" },
+    playlistId: "p1",
+    videoIds: ["v1"],
+  });
+
+  assert.deepEqual(
+    accountant
+      .entries()
+      .map(({ operationId, operation }) => [operationId, operation]),
+    [
+      ["playlist-operation", "playlists.list"],
+      ["playlist-operation", "playlists.insert"],
+      ["playlist-operation", "playlists.list"],
+      ["playlist-operation", "playlists.update"],
+      ["playlist-operation", "playlists.list"],
+      ["playlist-operation", "playlists.delete"],
+      ["playlist-operation", "playlistItems.insert"],
+      ["playlist-operation", "playlistItems.insert"],
+      ["playlist-operation", "playlistItems.list"],
+      ["playlist-operation", "playlistItems.delete"],
+    ],
+  );
+});
 
 test("listPlaylists resolves auth and returns stable output", async () => {
   const { services, authCalls } = createServicesFixture();
@@ -81,7 +256,12 @@ test("listPlaylists resolves auth and returns stable output", async () => {
 
   assert.deepEqual(result, {
     playlists: [
-      { id: "p1", title: "Playlist 1", description: "Desc", privacyStatus: "private" },
+      {
+        id: "p1",
+        title: "Playlist 1",
+        description: "Desc",
+        privacyStatus: "private",
+      },
     ],
   });
   assert.equal(authCalls.length, 1);
@@ -143,7 +323,7 @@ test("createPlaylist maps unknown failures to update_failed", async () => {
     (error: unknown) =>
       error instanceof DomainError &&
       error.code === "update_failed" &&
-      error.message === "remote failure"
+      error.message === "remote failure",
   );
 });
 
@@ -216,7 +396,7 @@ test("createPlaylist blocks mismatch guardrail and does not call remote create",
         activeWriteChannelId: "UC_ACTIVE",
       });
       return true;
-    }
+    },
   );
 
   assert.equal(createCalls, 0);
@@ -341,7 +521,12 @@ test("updatePlaylist blocks guardrail mismatch before ownership preflight and re
       },
       updatePlaylist: async () => {
         calls.update += 1;
-        return { id: "p-updated", title: "Updated", description: "", privacyStatus: "private" };
+        return {
+          id: "p-updated",
+          title: "Updated",
+          description: "",
+          privacyStatus: "private",
+        };
       },
       getPlaylistForDelete: async () => null,
       deletePlaylist: async () => undefined,
@@ -382,7 +567,7 @@ test("updatePlaylist blocks guardrail mismatch before ownership preflight and re
         activeWriteChannelId: "UC_ACTIVE",
       });
       return true;
-    }
+    },
   );
 
   assert.deepEqual(calls, { preflight: 0, update: 0 });
@@ -415,7 +600,12 @@ test("updatePlaylist fails closed on unresolved write channel before ownership p
       },
       updatePlaylist: async () => {
         calls.update += 1;
-        return { id: "p-updated", title: "Updated", description: "", privacyStatus: "private" };
+        return {
+          id: "p-updated",
+          title: "Updated",
+          description: "",
+          privacyStatus: "private",
+        };
       },
       getPlaylistForDelete: async () => null,
       deletePlaylist: async () => undefined,
@@ -427,7 +617,8 @@ test("updatePlaylist fails closed on unresolved write channel before ownership p
       assertWriteChannel: async () => {
         throw new DomainError({
           code: "WRITE_CHANNEL_UNRESOLVED",
-          message: "Cannot resolve active write channel for the current OAuth session",
+          message:
+            "Cannot resolve active write channel for the current OAuth session",
           details: { expectedChannelId: "UC_EXPECTED" },
         });
       },
@@ -445,7 +636,8 @@ test("updatePlaylist fails closed on unresolved write channel before ownership p
         expectedChannelId: "UC_EXPECTED",
         title: "Updated",
       }),
-    (error: unknown) => error instanceof DomainError && error.code === "WRITE_CHANNEL_UNRESOLVED"
+    (error: unknown) =>
+      error instanceof DomainError && error.code === "WRITE_CHANNEL_UNRESOLVED",
   );
 
   assert.deepEqual(calls, { preflight: 0, update: 0 });
@@ -481,7 +673,12 @@ test("updatePlaylist fails closed when playlist ownership does not match active 
       }),
       updatePlaylist: async () => {
         calls.update += 1;
-        return { id: "p-updated", title: "Updated", description: "", privacyStatus: "private" };
+        return {
+          id: "p-updated",
+          title: "Updated",
+          description: "",
+          privacyStatus: "private",
+        };
       },
       getPlaylistForDelete: async () => null,
       deletePlaylist: async () => undefined,
@@ -518,7 +715,7 @@ test("updatePlaylist fails closed when playlist ownership does not match active 
         activeWriteChannelId: "UC_OTHER",
       });
       return true;
-    }
+    },
   );
 
   assert.equal(calls.update, 0);
@@ -809,7 +1006,8 @@ test("deletePlaylist fails closed when active channel and playlist owner mismatc
         playlistId: "playlist-1",
         expectedChannelId: "UC_ACTIVE",
       }),
-    (error: unknown) => error instanceof DomainError && error.code === "WRITE_CHANNEL_MISMATCH"
+    (error: unknown) =>
+      error instanceof DomainError && error.code === "WRITE_CHANNEL_MISMATCH",
   );
 });
 
@@ -856,7 +1054,8 @@ test("deletePlaylist blocks unresolved guardrail and never reaches remote delete
       assertWriteChannel: async () => {
         throw new DomainError({
           code: "WRITE_CHANNEL_UNRESOLVED",
-          message: "Cannot resolve active write channel for the current OAuth session",
+          message:
+            "Cannot resolve active write channel for the current OAuth session",
           details: { expectedChannelId: "UC_EXPECTED" },
         });
       },
@@ -878,7 +1077,7 @@ test("deletePlaylist blocks unresolved guardrail and never reaches remote delete
       assert.equal(error.code, "WRITE_CHANNEL_UNRESOLVED");
       assert.deepEqual(error.details, { expectedChannelId: "UC_EXPECTED" });
       return true;
-    }
+    },
   );
 
   assert.deepEqual(calls, { preflight: 0, delete: 0 });
