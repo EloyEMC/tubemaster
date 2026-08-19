@@ -147,20 +147,20 @@ export function parseArgs(argv: string[]): ParsedArgs {
   if (isQuotaNamespace) {
     const flagNames = Object.keys(flags);
     if (flagNames.some((key) => key !== "channelId")) {
-          throw new DomainError({
-            code: "validation_failed",
-            message: "Quota usage only accepts --channelId",
-          });
+      throw new DomainError({
+        code: "validation_failed",
+        message: "Quota usage only accepts --channelId",
+      });
     }
     if (
       "channelId" in flags &&
-          (typeof flags.channelId !== "string" ||
-            !/^[A-Za-z0-9_-]+$/.test(flags.channelId))
-        ) {
-          throw new DomainError({
-            code: "validation_failed",
-            message: "Invalid --channelId",
-          });
+      (typeof flags.channelId !== "string" ||
+        !/^[A-Za-z0-9_-]+$/.test(flags.channelId))
+    ) {
+      throw new DomainError({
+        code: "validation_failed",
+        message: "Invalid --channelId",
+      });
     }
   }
 
@@ -175,6 +175,24 @@ export function parseArgs(argv: string[]): ParsedArgs {
     command: commandRaw as ParsedArgs["command"],
     flags,
   };
+}
+
+function requirePlaylistMutationConfirmation(
+  flags: Record<string, string | boolean>,
+): void {
+  if (flags.confirmed === true) return;
+
+  if ("confirmed" in flags) {
+    throw new DomainError({
+      code: "validation_failed",
+      message: "--confirmed must be provided without a value",
+    });
+  }
+
+  throw new DomainError({
+    code: "validation_failed",
+    message: "Missing required --confirmed",
+  });
 }
 
 function parseVideoIdsFlag(flags: Record<string, string | boolean>) {
@@ -390,13 +408,13 @@ export async function runCliCommand(args: {
 
     if (parsedArgs.namespace === "quota") {
       const user = await auth.whoami();
-          const result = await quotaReader.summarizeQuotaUsage({
-            scopeType: "user",
-            scopeId: activeUserId(user),
-            ...(typeof parsedArgs.flags.channelId === "string"
-              ? { channelId: parsedArgs.flags.channelId }
-              : {}),
-          });
+      const result = await quotaReader.summarizeQuotaUsage({
+        scopeType: "user",
+        scopeId: activeUserId(user),
+        ...(typeof parsedArgs.flags.channelId === "string"
+          ? { channelId: parsedArgs.flags.channelId }
+          : {}),
+      });
       writeStdout(serializeSuccess(result));
       return 0;
     }
@@ -414,6 +432,7 @@ export async function runCliCommand(args: {
       }
 
       if (parsedArgs.command === "create") {
+        requirePlaylistMutationConfirmation(parsedArgs.flags);
         const result = await core.createPlaylist({
           credentialRef,
           title: requiredStringFlag(parsedArgs.flags, "title"),
@@ -435,6 +454,7 @@ export async function runCliCommand(args: {
       }
 
       if (parsedArgs.command === "update") {
+        requirePlaylistMutationConfirmation(parsedArgs.flags);
         const title =
           typeof parsedArgs.flags.title === "string"
             ? parsedArgs.flags.title
@@ -476,6 +496,7 @@ export async function runCliCommand(args: {
       }
 
       if (parsedArgs.command === "delete") {
+        requirePlaylistMutationConfirmation(parsedArgs.flags);
         const result = await core.deletePlaylist({
           credentialRef,
           playlistId: requiredStringFlag(parsedArgs.flags, "playlistId"),
@@ -489,18 +510,28 @@ export async function runCliCommand(args: {
       }
 
       if (parsedArgs.command === "add") {
+        requirePlaylistMutationConfirmation(parsedArgs.flags);
         const result = await core.addVideosToPlaylist({
           credentialRef,
           playlistId: requiredStringFlag(parsedArgs.flags, "playlistId"),
+          expectedChannelId: requiredStringFlag(
+            parsedArgs.flags,
+            "expectedChannelId",
+          ),
           videoIds: parseVideoIdsFlag(parsedArgs.flags),
         });
         writeStdout(serializeSuccess(result));
         return 0;
       }
 
+      requirePlaylistMutationConfirmation(parsedArgs.flags);
       const result = await core.removeVideosFromPlaylist({
         credentialRef,
         playlistId: requiredStringFlag(parsedArgs.flags, "playlistId"),
+        expectedChannelId: requiredStringFlag(
+          parsedArgs.flags,
+          "expectedChannelId",
+        ),
         videoIds: parseVideoIdsFlag(parsedArgs.flags),
       });
       writeStdout(serializeSuccess(result));

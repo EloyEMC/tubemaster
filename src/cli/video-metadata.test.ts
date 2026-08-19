@@ -23,20 +23,36 @@ function makeCoreStub(): Pick<
       void input;
       return {
         videos: [
-          { videoId: "v1", title: "Title", description: "Desc", publishedAt: "2024-01-01" },
+          {
+            videoId: "v1",
+            title: "Title",
+            description: "Desc",
+            publishedAt: "2024-01-01",
+          },
         ],
       };
     },
     getTranscript: async (input: unknown) => {
       void input;
-      return { transcript: { status: "available" as const, text: "Transcript" } };
+      return {
+        transcript: { status: "available" as const, text: "Transcript" },
+      };
     },
     previewMetadata: async (input: unknown) => {
       void input;
       return {
-        video: { videoId: "v1", title: "Title", description: "Desc", publishedAt: "2024-01-01" },
+        video: {
+          videoId: "v1",
+          title: "Title",
+          description: "Desc",
+          publishedAt: "2024-01-01",
+        },
         transcript: { status: "available" as const, text: "Transcript" },
-        draft: { finalTitle: "New title", description: "New description", promptVersion: "v1" },
+        draft: {
+          finalTitle: "New title",
+          description: "New description",
+          promptVersion: "v1",
+        },
       };
     },
     applyMetadata: async (input: unknown) => {
@@ -48,7 +64,11 @@ function makeCoreStub(): Pick<
         languageSource: "defaultLanguage" as const,
         snippet: {
           before: { title: "Title", description: "Desc", categoryId: "22" },
-          proposed: { title: "New title", description: "New description", categoryId: "22" },
+          proposed: {
+            title: "New title",
+            description: "New description",
+            categoryId: "22",
+          },
         },
         localizations: {
           before: {
@@ -117,8 +137,14 @@ function makeCoreStub(): Pick<
 
 function makeAuthStub() {
   return {
-    login: async () => ({ method: "loopback", user: { userId: "u1", email: "u1@example.com" } }),
-    loginDevice: async () => ({ method: "device", user: { userId: "u1", email: "u1@example.com" } }),
+    login: async () => ({
+      method: "loopback",
+      user: { userId: "u1", email: "u1@example.com" },
+    }),
+    loginDevice: async () => ({
+      method: "device",
+      user: { userId: "u1", email: "u1@example.com" },
+    }),
     whoami: async () => ({
       userId: "u1",
       email: "u1@example.com",
@@ -131,8 +157,10 @@ function makeAuthStub() {
       alignment: {
         status: "mismatch",
         requiresReauth: true,
-        message: "Selected expected channel does not match the active OAuth channel.",
-        recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
+        message:
+          "Selected expected channel does not match the active OAuth channel.",
+        recommendedAction:
+          "Reauthenticate with the expected channel or select the active channel.",
       },
       requiresReauth: true,
       knownChannels: [
@@ -175,8 +203,10 @@ function makeAuthStub() {
         alignment: {
           status: "mismatch",
           requiresReauth: true,
-          message: "Selected expected channel does not match the active OAuth channel.",
-          recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
+          message:
+            "Selected expected channel does not match the active OAuth channel.",
+          recommendedAction:
+            "Reauthenticate with the expected channel or select the active channel.",
         },
         requiresReauth: true,
       },
@@ -202,8 +232,10 @@ function makeAuthStub() {
       alignment: {
         status: "mismatch",
         requiresReauth: true,
-        message: "Selected expected channel does not match the active OAuth channel.",
-        recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
+        message:
+          "Selected expected channel does not match the active OAuth channel.",
+        recommendedAction:
+          "Reauthenticate with the expected channel or select the active channel.",
       },
       activeWriteChannel: { id: "UC_ACTIVE", title: "Active channel" },
       selectedChannelId: "UC_SELECTED",
@@ -219,8 +251,10 @@ function makeAuthStub() {
       alignment: {
         status: "mismatch",
         requiresReauth: true,
-        message: "Selected expected channel does not match the active OAuth channel.",
-        recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
+        message:
+          "Selected expected channel does not match the active OAuth channel.",
+        recommendedAction:
+          "Reauthenticate with the expected channel or select the active channel.",
       },
       knownChannels: [
         {
@@ -239,8 +273,10 @@ function makeAuthStub() {
         },
       ],
       requiresReauth: true,
-      message: "Selected expected channel does not match the active OAuth channel.",
-      recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
+      message:
+        "Selected expected channel does not match the active OAuth channel.",
+      recommendedAction:
+        "Reauthenticate with the expected channel or select the active channel.",
     }),
     listUsers: async () => ({
       users: [
@@ -283,8 +319,10 @@ function makeAuthStub() {
         alignment: {
           status: "mismatch",
           requiresReauth: true,
-          message: "Selected expected channel does not match the active OAuth channel.",
-          recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
+          message:
+            "Selected expected channel does not match the active OAuth channel.",
+          recommendedAction:
+            "Reauthenticate with the expected channel or select the active channel.",
         },
         requiresReauth: true,
       },
@@ -293,8 +331,10 @@ function makeAuthStub() {
       alignment: {
         status: "mismatch",
         requiresReauth: true,
-        message: "Selected expected channel does not match the active OAuth channel.",
-        recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
+        message:
+          "Selected expected channel does not match the active OAuth channel.",
+        recommendedAction:
+          "Reauthenticate with the expected channel or select the active channel.",
       },
       requiresReauth: true,
       affectsRemoteOAuth: false as const,
@@ -305,7 +345,11 @@ function makeAuthStub() {
       userId: userId ?? "u1",
       clearedActive: true,
     }),
-    resolveEffectiveCredentialRef: async ({ explicit }: { explicit?: unknown }) =>
+    resolveEffectiveCredentialRef: async ({
+      explicit,
+    }: {
+      explicit?: unknown;
+    }) =>
       (explicit as { userId: string } | undefined) ?? { userId: "active-user" },
   };
 }
@@ -349,7 +393,12 @@ test("CLI list command calls core listVideos and returns structured JSON", async
     capturedInput = input;
     return {
       videos: [
-        { videoId: "v1", title: "Title", description: "Desc", publishedAt: "2024-01-01" },
+        {
+          videoId: "v1",
+          title: "Title",
+          description: "Desc",
+          publishedAt: "2024-01-01",
+        },
       ],
     };
   };
@@ -422,7 +471,10 @@ test("CLI metadata commands fallback to active auth context when --userId is omi
   });
 
   assert.equal(exitCode, 0);
-  assert.deepEqual(capturedInput, { credentialRef: { userId: "active-user" }, maxResults: undefined });
+  assert.deepEqual(capturedInput, {
+    credentialRef: { userId: "active-user" },
+    maxResults: undefined,
+  });
 
   const envelope = JSON.parse(stdout[0] ?? "{}");
   assert.equal(envelope.ok, true);
@@ -488,6 +540,29 @@ test("CLI transcript keeps stable envelope and propagates diagnostic unchanged",
   });
 });
 
+test("CLI transcript passes through unsupported provider status", async () => {
+  const stdout: string[] = [];
+  const core = makeCoreStub();
+  core.getTranscript = async () => ({
+    transcript: { status: "unsupported", reason: "provider-missing" },
+  });
+
+  const exitCode = await runCliCommand({
+    argv: ["transcript", "--videoId", "v1"],
+    core,
+    auth: makeAuthStub(),
+    writeStdout: (line) => stdout.push(line),
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(JSON.parse(stdout[0] ?? "{}"), {
+    ok: true,
+    data: {
+      transcript: { status: "unsupported", reason: "provider-missing" },
+    },
+  });
+});
+
 test("CLI apply dry-run forwards dryRun=true and returns proposal", async () => {
   let capturedInput: unknown;
   const core = makeCoreStub();
@@ -502,7 +577,11 @@ test("CLI apply dry-run forwards dryRun=true and returns proposal", async () => 
       languageSource: "defaultLanguage" as const,
       snippet: {
         before: { title: "Title", description: "Desc", categoryId: "22" },
-        proposed: { title: "Draft", description: "Draft desc", categoryId: "22" },
+        proposed: {
+          title: "Draft",
+          description: "Draft desc",
+          categoryId: "22",
+        },
       },
       localizations: {
         before: {
@@ -632,7 +711,10 @@ test("CLI auth command login calls device flow with --device and stable envelope
   let loginDeviceCalled = false;
   auth.loginDevice = async () => {
     loginDeviceCalled = true;
-    return { method: "device", user: { userId: "u1", email: "u1@example.com" } };
+    return {
+      method: "device",
+      user: { userId: "u1", email: "u1@example.com" },
+    };
   };
 
   const stdout: string[] = [];
@@ -658,12 +740,18 @@ test("CLI auth login default uses loopback flow and returns stable success envel
 
   auth.login = async () => {
     loginCalled = true;
-    return { method: "loopback", user: { userId: "u1", email: "u1@example.com" } };
+    return {
+      method: "loopback",
+      user: { userId: "u1", email: "u1@example.com" },
+    };
   };
 
   auth.loginDevice = async () => {
     loginDeviceCalled = true;
-    return { method: "device", user: { userId: "u1", email: "u1@example.com" } };
+    return {
+      method: "device",
+      user: { userId: "u1", email: "u1@example.com" },
+    };
   };
 
   const stdout: string[] = [];
@@ -742,7 +830,10 @@ test("CLI auth select-channel persists expected channel and returns mismatch gui
   assert.equal(envelope.data.selectedChannelId, "UC1111111111111111111111");
   assert.equal(envelope.data.alignment.status, "mismatch");
   assert.equal(envelope.data.alignment.requiresReauth, true);
-  assert.match(envelope.data.message, /does not match the active OAuth channel/i);
+  assert.match(
+    envelope.data.message,
+    /does not match the active OAuth channel/i,
+  );
 });
 
 test("CLI auth select-user switches local fallback identity only", async () => {
@@ -853,7 +944,8 @@ test("CLI auth returns AUTH_REFRESH_TOKEN_MISSING as stable JSON error envelope"
   auth.whoami = async () => {
     throw new DomainError({
       code: "AUTH_REFRESH_TOKEN_MISSING",
-      message: "Stored credentials have expired and no refresh token is available",
+      message:
+        "Stored credentials have expired and no refresh token is available",
       details: { userId: "u1" },
     });
   };
@@ -870,7 +962,10 @@ test("CLI auth returns AUTH_REFRESH_TOKEN_MISSING as stable JSON error envelope"
   const envelope = JSON.parse(stderr[0] ?? "{}");
   assert.equal(envelope.ok, false);
   assert.equal(envelope.error.code, "AUTH_REFRESH_TOKEN_MISSING");
-  assert.equal(envelope.error.message, "Stored credentials have expired and no refresh token is available");
+  assert.equal(
+    envelope.error.message,
+    "Stored credentials have expired and no refresh token is available",
+  );
   assert.deepEqual(envelope.error.details, { userId: "u1" });
 });
 
@@ -879,7 +974,11 @@ test("CLI auth login --device emits pending verification details to stderr befor
   const stdout: string[] = [];
   const stderr: string[] = [];
 
-  auth.loginDevice = async ({ onPending }: { onPending?: (data: unknown) => void } = {}) => {
+  auth.loginDevice = async ({
+    onPending,
+  }: {
+    onPending?: (data: unknown) => void;
+  } = {}) => {
     onPending?.({
       userCode: "USER-CODE",
       verificationUrl: "https://example.com/verify",
@@ -889,7 +988,10 @@ test("CLI auth login --device emits pending verification details to stderr befor
       interval: 5,
     });
 
-    return { method: "device", user: { userId: "u1", email: "u1@example.com" } };
+    return {
+      method: "device",
+      user: { userId: "u1", email: "u1@example.com" },
+    };
   };
 
   const exitCode = await runCliCommand({
@@ -908,7 +1010,10 @@ test("CLI auth login --device emits pending verification details to stderr befor
   assert.equal(pendingEnvelope.ok, true);
   assert.equal(pendingEnvelope.event, "auth_pending");
   assert.equal(pendingEnvelope.data.userCode, "USER-CODE");
-  assert.equal(pendingEnvelope.data.verificationUrl, "https://example.com/verify");
+  assert.equal(
+    pendingEnvelope.data.verificationUrl,
+    "https://example.com/verify",
+  );
 
   const successEnvelope = JSON.parse(stdout[0] ?? "{}");
   assert.equal(successEnvelope.ok, true);
@@ -929,9 +1034,18 @@ test("CLI transcript/preview/apply fallback to active auth context when --userId
   core.previewMetadata = async (input: unknown) => {
     captured.preview = input;
     return {
-      video: { videoId: "v1", title: "Title", description: "Desc", publishedAt: "2024-01-01" },
+      video: {
+        videoId: "v1",
+        title: "Title",
+        description: "Desc",
+        publishedAt: "2024-01-01",
+      },
       transcript: { status: "available" as const, text: "Transcript" },
-      draft: { finalTitle: "New title", description: "New description", promptVersion: "v1" },
+      draft: {
+        finalTitle: "New title",
+        description: "New description",
+        promptVersion: "v1",
+      },
     };
   };
 
@@ -944,7 +1058,11 @@ test("CLI transcript/preview/apply fallback to active auth context when --userId
       languageSource: "defaultLanguage" as const,
       snippet: {
         before: { title: "Title", description: "Desc", categoryId: "22" },
-        proposed: { title: "New title", description: "New description", categoryId: "22" },
+        proposed: {
+          title: "New title",
+          description: "New description",
+          categoryId: "22",
+        },
       },
       localizations: {
         before: {
@@ -1095,7 +1213,8 @@ test("CLI apply returns unresolved guardrail details with non-zero exit", async 
   core.applyMetadata = async () => {
     throw new DomainError({
       code: "WRITE_CHANNEL_UNRESOLVED",
-      message: "Cannot resolve active write channel for the current OAuth session",
+      message:
+        "Cannot resolve active write channel for the current OAuth session",
       details: {
         expectedChannelId: "UC_EXPECTED",
       },
@@ -1127,6 +1246,68 @@ test("CLI apply returns unresolved guardrail details with non-zero exit", async 
   assert.deepEqual(envelope.error.details, {
     expectedChannelId: "UC_EXPECTED",
   });
+});
+
+test("CLI playlist mutations require presence-only --confirmed before core invocation", async () => {
+  const stderr: string[] = [];
+  let coreCalled = false;
+  const core = makeCoreStub();
+  core.createPlaylist = async () => {
+    coreCalled = true;
+    return { playlist: { id: "p1" } } as never;
+  };
+
+  const exitCode = await runCliCommand({
+    argv: [
+      "playlist",
+      "create",
+      "--title",
+      "Roadtrip",
+      "--expectedChannelId",
+      "UC_ACTIVE",
+    ],
+    core,
+    auth: makeAuthStub(),
+    writeStderr: (line) => stderr.push(line),
+  });
+
+  assert.equal(exitCode, 1);
+  assert.equal(coreCalled, false);
+  const envelope = JSON.parse(stderr[0] ?? "{}");
+  assert.equal(envelope.error.code, "validation_failed");
+  assert.match(envelope.error.message, /Missing required --confirmed/);
+});
+
+test("CLI playlist mutations reject string values for --confirmed", async () => {
+  const stderr: string[] = [];
+  let coreCalled = false;
+  const core = makeCoreStub();
+  core.deletePlaylist = async () => {
+    coreCalled = true;
+    return { deleted: true, playlistId: "p1" };
+  };
+
+  const exitCode = await runCliCommand({
+    argv: [
+      "playlist",
+      "delete",
+      "--playlistId",
+      "p1",
+      "--expectedChannelId",
+      "UC_ACTIVE",
+      "--confirmed",
+      "true",
+    ],
+    core,
+    auth: makeAuthStub(),
+    writeStderr: (line) => stderr.push(line),
+  });
+
+  assert.equal(exitCode, 1);
+  assert.equal(coreCalled, false);
+  const envelope = JSON.parse(stderr[0] ?? "{}");
+  assert.equal(envelope.error.code, "validation_failed");
+  assert.match(envelope.error.message, /--confirmed must be provided without a value/);
 });
 
 test("CLI playlist list/create commands use shared core and stable JSON envelope", async () => {
@@ -1172,6 +1353,7 @@ test("CLI playlist list/create commands use shared core and stable JSON envelope
     argv: [
       "playlist",
       "create",
+      "--confirmed",
       "--userId",
       "user-1",
       "--title",
@@ -1234,6 +1416,7 @@ test("CLI playlist update validates and forwards patch payload", async () => {
     argv: [
       "playlist",
       "update",
+      "--confirmed",
       "--playlistId",
       "p1",
       "--expectedChannelId",
@@ -1282,6 +1465,7 @@ test("CLI playlist delete forwards expectedChannelId and returns stable envelope
     argv: [
       "playlist",
       "delete",
+      "--confirmed",
       "--playlistId",
       "p-delete",
       "--expectedChannelId",
@@ -1328,6 +1512,7 @@ test("CLI playlist create fails closed on guardrail mismatch with stable error d
     argv: [
       "playlist",
       "create",
+      "--confirmed",
       "--title",
       "Roadtrip",
       "--expectedChannelId",
@@ -1367,6 +1552,7 @@ test("CLI playlist update fails closed on guardrail mismatch with stable error d
     argv: [
       "playlist",
       "update",
+      "--confirmed",
       "--playlistId",
       "p-update",
       "--expectedChannelId",
@@ -1408,6 +1594,7 @@ test("CLI playlist update fails closed on invalid ownership with structured erro
     argv: [
       "playlist",
       "update",
+      "--confirmed",
       "--playlistId",
       "p-update",
       "--expectedChannelId",
@@ -1424,7 +1611,10 @@ test("CLI playlist update fails closed on invalid ownership with structured erro
   const envelope = JSON.parse(stderr[0] ?? "{}");
   assert.equal(envelope.ok, false);
   assert.equal(envelope.error.code, "WRITE_CHANNEL_MISMATCH");
-  assert.match(envelope.error.message, /does not belong to the active write channel/);
+  assert.match(
+    envelope.error.message,
+    /does not belong to the active write channel/,
+  );
   assert.deepEqual(envelope.error.details, {
     expectedChannelId: "UC_ACTIVE",
     activeWriteChannelId: "UC_OTHER",
@@ -1438,7 +1628,8 @@ test("CLI playlist delete fails closed on unresolved channel with stable error d
   core.deletePlaylist = async () => {
     throw new DomainError({
       code: "WRITE_CHANNEL_UNRESOLVED",
-      message: "Cannot resolve active write channel for the current OAuth session",
+      message:
+        "Cannot resolve active write channel for the current OAuth session",
       details: {
         expectedChannelId: "UC_ACTIVE",
       },
@@ -1449,6 +1640,7 @@ test("CLI playlist delete fails closed on unresolved channel with stable error d
     argv: [
       "playlist",
       "delete",
+      "--confirmed",
       "--playlistId",
       "p-delete",
       "--expectedChannelId",
@@ -1468,19 +1660,59 @@ test("CLI playlist delete fails closed on unresolved channel with stable error d
   });
 });
 
-test("CLI playlist add/remove commands return stable partial-result envelopes", async () => {
-  const core = makeCoreStub();
-  const stdout: string[] = [];
+    test("CLI playlist add/remove commands forward channel and return stable partial-result envelopes", async () => {
+      const core = makeCoreStub();
+      const stdout: string[] = [];
+      let capturedAddInput: unknown;
+      let capturedRemoveInput: unknown;
+      core.addVideosToPlaylist = async (input: unknown) => {
+        capturedAddInput = input;
+        return {
+          playlistId: "p1",
+          attempted: 2,
+          added: 1,
+          failures: [{ videoId: "v2", reason: "already-present" as const }],
+        };
+      };
+      core.removeVideosFromPlaylist = async (input: unknown) => {
+        capturedRemoveInput = input;
+        return {
+          playlistId: "p1",
+          requested: 2,
+          removed: 1,
+          failures: [{ videoId: "v2", reason: "not-found-in-playlist" as const }],
+        };
+      };
 
-  const addExitCode = await runCliCommand({
-    argv: ["playlist", "add", "--playlistId", "p1", "--videoIds", "v1,v2"],
+      const addExitCode = await runCliCommand({
+        argv: [
+          "playlist",
+          "add",
+          "--confirmed",
+          "--playlistId",
+          "p1",
+          "--expectedChannelId",
+          "UC_ACTIVE",
+          "--videoIds",
+          "v1,v2",
+        ],
     core,
     auth: makeAuthStub(),
     writeStdout: (line) => stdout.push(line),
   });
 
   const removeExitCode = await runCliCommand({
-    argv: ["playlist", "remove", "--playlistId", "p1", "--videoIds", "v1,v2"],
+        argv: [
+          "playlist",
+          "remove",
+          "--confirmed",
+          "--playlistId",
+          "p1",
+          "--expectedChannelId",
+          "UC_ACTIVE",
+          "--videoIds",
+          "v1,v2",
+        ],
     core,
     auth: makeAuthStub(),
     writeStdout: (line) => stdout.push(line),
@@ -1488,6 +1720,18 @@ test("CLI playlist add/remove commands return stable partial-result envelopes", 
 
   assert.equal(addExitCode, 0);
   assert.equal(removeExitCode, 0);
+  assert.deepEqual(capturedAddInput, {
+credentialRef: { userId: "active-user" },
+playlistId: "p1",
+expectedChannelId: "UC_ACTIVE",
+videoIds: ["v1", "v2"],
+  });
+  assert.deepEqual(capturedRemoveInput, {
+credentialRef: { userId: "active-user" },
+playlistId: "p1",
+expectedChannelId: "UC_ACTIVE",
+videoIds: ["v1", "v2"],
+  });
 
   const addEnvelope = JSON.parse(stdout[0] ?? "{}");
   const removeEnvelope = JSON.parse(stdout[1] ?? "{}");
@@ -1513,11 +1757,50 @@ test("CLI playlist add/remove commands return stable partial-result envelopes", 
   });
 });
 
-test("CLI playlist commands fail with non-zero exit on missing required flags", async () => {
+    test("CLI playlist add/remove require expectedChannelId before core invocation", async () => {
+      const stderr: string[] = [];
+      let coreCalled = false;
+      const core = makeCoreStub();
+      core.addVideosToPlaylist = async () => {
+        coreCalled = true;
+        return { playlistId: "p1", attempted: 1, added: 1, failures: [] };
+      };
+
+      const exitCode = await runCliCommand({
+        argv: [
+          "playlist",
+          "add",
+          "--confirmed",
+          "--playlistId",
+          "p1",
+          "--videoIds",
+          "v1",
+        ],
+        core,
+        auth: makeAuthStub(),
+        writeStderr: (line) => stderr.push(line),
+      });
+
+      assert.equal(exitCode, 1);
+      assert.equal(coreCalled, false);
+      const envelope = JSON.parse(stderr[0] ?? "{}");
+      assert.equal(envelope.error.code, "validation_failed");
+      assert.match(envelope.error.message, /Missing required --expectedChannelId/);
+    });
+
+    test("CLI playlist commands fail with non-zero exit on missing required flags", async () => {
   const stderr: string[] = [];
 
   const exitCode = await runCliCommand({
-    argv: ["playlist", "add", "--playlistId", "p1"],
+        argv: [
+          "playlist",
+          "add",
+          "--confirmed",
+          "--playlistId",
+          "p1",
+          "--expectedChannelId",
+          "UC_ACTIVE",
+        ],
     core: makeCoreStub(),
     auth: makeAuthStub(),
     writeStderr: (line) => stderr.push(line),
@@ -1537,6 +1820,7 @@ test("CLI playlist update fails with actionable validation error for empty patch
     argv: [
       "playlist",
       "update",
+      "--confirmed",
       "--playlistId",
       "p1",
       "--expectedChannelId",
@@ -1551,7 +1835,10 @@ test("CLI playlist update fails with actionable validation error for empty patch
   const envelope = JSON.parse(stderr[0] ?? "{}");
   assert.equal(envelope.ok, false);
   assert.equal(envelope.error.code, "validation_failed");
-  assert.match(envelope.error.message, /At least one mutable field is required/);
+  assert.match(
+    envelope.error.message,
+    /At least one mutable field is required/,
+  );
 });
 
 test("CLI playlist fails with typed auth error when no credential source is available", async () => {
