@@ -12,6 +12,10 @@ import { createCliAuthService, type CliAuthService } from "@/lib/cli-auth/servic
 import type { CredentialRef } from "@/lib/video-metadata/contracts";
 import { createPlaylistManagementCore, type PlaylistManagementCore } from "@/lib/playlist-management";
 import {
+  summarizeQuotaUsage,
+  type QuotaUsageSummaryFilter,
+} from "@/lib/quota/repository";
+import {
   playlistAddVideosInputSchema,
   playlistCreateInputSchema,
   playlistDeleteInputSchema,
@@ -152,6 +156,8 @@ export const writeChannelListInputSchema = z
   })
   .strict();
 
+export const quotaUsageInputSchema = z.object({}).strict();
+
 export const writeChannelSelectInputSchema = z
   .object({
     credentialRef: credentialSchema.optional(),
@@ -186,6 +192,29 @@ const playlistUpdateToolInputSchema = z
     }
   );
 
+type QuotaReader = {
+  summarizeQuotaUsage(
+    filter: QuotaUsageSummaryFilter,
+  ): ReturnType<typeof summarizeQuotaUsage>;
+};
+
+function activeUserId(value: unknown): string {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "userId" in value &&
+    typeof value.userId === "string" &&
+    value.userId.length > 0
+  ) {
+    return value.userId;
+  }
+
+  throw new DomainError({
+    code: "validation_failed",
+    message: "Authenticated user identity is unavailable",
+  });
+}
+
 export function createMcpToolHandlers(
   core: VideoMetadataCoreSubset & PlaylistManagementCoreSubset,
   auth: {
@@ -194,8 +223,10 @@ export function createMcpToolHandlers(
     selectUser: (args: { userId: string }) => Promise<unknown>;
     listKnownWriteChannels: (args?: { credentialRef?: CredentialRef }) => Promise<unknown>;
     selectWriteChannel: (args: { channelId: string; credentialRef?: CredentialRef }) => Promise<unknown>;
-  } = createCliAuthService()
+  } = createCliAuthService(),
+  quotaReader: QuotaReader = { summarizeQuotaUsage },
 ) {
+
   async function resolveCredentialRef(explicitCredentialRef: unknown) {
     return auth.resolveEffectiveCredentialRef({
       explicit: explicitCredentialRef as CredentialRef | undefined,
@@ -249,6 +280,24 @@ export function createMcpToolHandlers(
       try {
         const result = await auth.whoami();
         return toolSuccessResult(result as Record<string, unknown>);
+      } catch (error) {
+        return toolErrorResult(error);
+      }
+    },
+
+    async quotaUsage(input: unknown): Promise<ToolResponse> {
+      const parsedInput = quotaUsageInputSchema.safeParse(input);
+      if (!parsedInput.success) {
+        return mapValidationErrorResult(parsedInput.error);
+      }
+
+      try {
+        const user = await auth.whoami();
+        const summaries = await quotaReader.summarizeQuotaUsage({
+          scopeType: "user",
+          scopeId: activeUserId(user),
+        });
+        return toolSuccessResult({ summaries });
       } catch (error) {
         return toolErrorResult(error);
       }
@@ -477,8 +526,19 @@ export function createMcpServer(
   const handlers = createMcpToolHandlers(core);
 
   server.registerTool(
+    "quota_usage",
+    {
+      description:
+        "Read-only quota usage summary for the active authenticated user. This tool never accepts a user ID and never returns global or other-user usage.",
+      inputSchema: quotaUsageInputSchema,
+    },
+    () => handlers.quotaUsage({})
+  );
+
+  server.registerTool(
     "write_context",
     {
+
       description:
         "Read-only write context for current OAuth session, including activeWriteChannel, selectedChannelId and effectiveCredentialRef.",
       inputSchema: z.object({}).strict(),
