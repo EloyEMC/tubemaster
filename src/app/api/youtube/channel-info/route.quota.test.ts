@@ -10,7 +10,7 @@ const channel = {
 
 function makeDeps(options: {
   record?: () => void;
-  list?: () => Promise<{ data: { items: typeof channel[] } }>;
+  list?: () => Promise<{ data: { items: (typeof channel)[] } }>;
 }) {
   const records: Array<{ operationId: string; operation: string }> = [];
   return {
@@ -51,14 +51,21 @@ test("channel info accounts a successful channels.list request", async () => {
   ]);
 });
 
-test("channel info preserves provider failures after accounting the attempt", async () => {
+test("channel info sanitizes provider failures after accounting the attempt", async () => {
   const providerFailure = new Error("provider failure");
-  const fixture = makeDeps({ list: async () => { throw providerFailure; } });
+  const fixture = makeDeps({
+    list: async () => {
+      throw providerFailure;
+    },
+  });
 
-  await assert.rejects(
-    createChannelInfoGetHandler(fixture.deps)(),
-    providerFailure,
-  );
+  const response = await createChannelInfoGetHandler(fixture.deps)();
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), {
+    error: "internal_error",
+    message: "Internal server error",
+  });
   assert.deepEqual(fixture.records, [
     { operationId: "channel-info-operation", operation: "channels.list" },
   ]);
@@ -67,12 +74,19 @@ test("channel info preserves provider failures after accounting the attempt", as
 test("channel info does not mask the provider result when accounting fails", async () => {
   const providerFailure = new Error("provider failure");
   const fixture = makeDeps({
-    record: () => { throw new Error("accounting failure"); },
-    list: async () => { throw providerFailure; },
+    record: () => {
+      throw new Error("accounting failure");
+    },
+    list: async () => {
+      throw providerFailure;
+    },
   });
 
-  await assert.rejects(
-    createChannelInfoGetHandler(fixture.deps)(),
-    providerFailure,
-  );
+  const response = await createChannelInfoGetHandler(fixture.deps)();
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), {
+    error: "internal_error",
+    message: "Internal server error",
+  });
 });
