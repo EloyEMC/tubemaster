@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { createGoogleOAuthClient } from "@/lib/auth";
 import { createYoutubeClient } from "@/lib/youtube";
+import type { QuotaAccountant } from "../../quota/accountant";
 import type {
   ResolvedCredentials,
   TranscriptDiagnostic,
@@ -9,7 +11,10 @@ import type {
 } from "../contracts";
 
 type OAuthClientLike = {
-  setCredentials(payload: { access_token: string; refresh_token?: string }): void;
+  setCredentials(payload: {
+    access_token: string;
+    refresh_token?: string;
+  }): void;
 };
 
 type CaptionItem = {
@@ -25,18 +30,24 @@ type YoutubeClientLike = {
     }): Promise<{ data: { items?: CaptionItem[] } }>;
     download(
       args: { id: string; tfmt: "srt" },
-      options: { responseType: "arraybuffer" }
+      options: { responseType: "arraybuffer" },
     ): Promise<{ data: ArrayBuffer | Buffer | string }>;
   };
 };
 
-type TranscriptProviderDeps = {
+export type TranscriptProviderDeps = {
   provider?: string;
   createOAuthClient?: () => OAuthClientLike;
   createYoutubeClient?: (oauth: OAuthClientLike) => YoutubeClientLike;
+  operationIdFactory?: () => string;
+  quotaAccountant?: QuotaAccountant;
 };
 
-const RATE_LIMIT_REASONS = new Set(["ratelimitexceeded", "userratelimitexceeded", "quotaexceeded"]);
+const RATE_LIMIT_REASONS = new Set([
+  "ratelimitexceeded",
+  "userratelimitexceeded",
+  "quotaexceeded",
+]);
 const PERMISSIONS_REASONS = new Set([
   "insufficientpermissions",
   "insufficientpermission",
@@ -158,7 +169,11 @@ function mapUnavailableReason(args: {
     return { reason: "rate-limited", retriable: true };
   }
 
-  if (typeof args.httpStatus === "number" && args.httpStatus >= 500 && args.httpStatus <= 599) {
+  if (
+    typeof args.httpStatus === "number" &&
+    args.httpStatus >= 500 &&
+    args.httpStatus <= 599
+  ) {
     return { reason: "api-error", retriable: true };
   }
 
@@ -173,6 +188,18 @@ function mapUnavailableReason(args: {
   }
 
   return { reason: "unknown", retriable: false };
+}
+
+function safeAccount(
+  accountant: QuotaAccountant | undefined,
+  operationId: string,
+  operation: "captions.list" | "captions.download",
+) {
+  try {
+    accountant?.record({ operationId, operation });
+  } catch {
+    // Quota accounting is observational and cannot change the operation result.
+  }
 }
 
 function classifyTranscriptError(args: {
@@ -202,20 +229,30 @@ function classifyTranscriptError(args: {
 }
 
 export function createTranscriptProvider(deps: TranscriptProviderDeps = {}) {
-  const provider = deps.provider ?? process.env.YOUTUBE_TRANSCRIPT_PROVIDER ?? "youtube-captions";
+  const provider =
+    deps.provider ??
+    process.env.YOUTUBE_TRANSCRIPT_PROVIDER ??
+    "youtube-captions";
   const createOAuthClient =
-    deps.createOAuthClient ?? (() => createGoogleOAuthClient() as unknown as OAuthClientLike);
+    deps.createOAuthClient ??
+    (() => createGoogleOAuthClient() as unknown as OAuthClientLike);
   const createYoutube =
     deps.createYoutubeClient ??
     ((oauth: OAuthClientLike) =>
-      createYoutubeClient(oauth as unknown as Parameters<typeof createYoutubeClient>[0]) as
-        unknown as YoutubeClientLike);
+      createYoutubeClient(
+        oauth as unknown as Parameters<typeof createYoutubeClient>[0],
+      ) as unknown as YoutubeClientLike);
 
   return {
     async getTranscript(args: {
       credentials: ResolvedCredentials;
       videoId: string;
+      operationId?: string;
+      quotaAccountant?: QuotaAccountant;
     }): Promise<TranscriptResult> {
+      const operationId =
+        args.operationId ?? deps.operationIdFactory?.() ?? randomUUID();
+      const accountant = args.quotaAccountant ?? deps.quotaAccountant;
       if (provider !== "youtube-captions") {
         return {
           status: "unsupported",
@@ -233,6 +270,7 @@ export function createTranscriptProvider(deps: TranscriptProviderDeps = {}) {
 
       let listRes: Awaited<ReturnType<YoutubeClientLike["captions"]["list"]>>;
       try {
+        safeAccount(accountant, operationId, "captions.list");
         listRes = await youtube.captions.list({
           part: ["snippet"],
           videoId: args.videoId,
@@ -249,8 +287,11 @@ export function createTranscriptProvider(deps: TranscriptProviderDeps = {}) {
         };
       }
 
-      let downloadRes: Awaited<ReturnType<YoutubeClientLike["captions"]["download"]>>;
+      let downloadRes: Awaited<
+        ReturnType<YoutubeClientLike["captions"]["download"]>
+      >;
       try {
+        safeAccount(accountant, operationId, "captions.download");
         downloadRes = await youtube.captions.download(
           {
             id: caption.id,
@@ -258,7 +299,7 @@ export function createTranscriptProvider(deps: TranscriptProviderDeps = {}) {
           },
           {
             responseType: "arraybuffer",
-          }
+          },
         );
       } catch (error) {
         return classifyTranscriptError({ stage: "captions-download", error });
