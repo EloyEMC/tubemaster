@@ -1,27 +1,49 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
-import { summarizeQuotaUsage } from "@/lib/quota/repository";
+import {
+  summarizeQuotaUsage,
+  type QuotaUsageSummary,
+  type QuotaUsageSummaryFilter,
+} from "@/lib/quota/repository";
 
-export async function GET() {
-  const session = await getServerSession(authOptions);
-  const userId = session?.user?.id;
+type QuotaUsageRouteDeps = {
+  getSession: () => Promise<{ user?: { id?: string | null } } | null>;
+  repository: {
+    summarizeQuotaUsage: (
+      filter: QuotaUsageSummaryFilter,
+    ) => Promise<QuotaUsageSummary[]>;
+  };
+};
 
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+export function createQuotaUsageGetHandler(
+  deps: QuotaUsageRouteDeps = {
+    getSession: () => getServerSession(authOptions),
+    repository: { summarizeQuotaUsage },
+  },
+) {
+  return async function GET() {
+    const session = await deps.getSession();
+    const userId = session?.user?.id;
 
-  try {
-    const summaries = await summarizeQuotaUsage({
-      scopeType: "user",
-      scopeId: userId,
-    });
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-    return NextResponse.json({ summaries });
-  } catch {
-    return NextResponse.json(
-      { error: "Unable to load quota usage" },
-      { status: 500 },
-    );
-  }
+    try {
+      const summaries = await deps.repository.summarizeQuotaUsage({
+        scopeType: "user",
+        scopeId: userId,
+      });
+
+      return NextResponse.json({ summaries });
+    } catch {
+      return NextResponse.json(
+        { error: "Unable to load quota usage" },
+        { status: 500 },
+      );
+    }
+  };
 }
+
+export const GET = createQuotaUsageGetHandler();
