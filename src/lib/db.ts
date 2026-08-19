@@ -83,6 +83,10 @@ async function initializeDatabase() {
       enabled INTEGER NOT NULL DEFAULT 1,
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
+    CREATE INDEX IF NOT EXISTS youtube_quota_usage_scope_date_operation_idx
+      ON youtube_quota_usage (scope_type, scope_id, bucket_start, operation);
+    CREATE INDEX IF NOT EXISTS youtube_quota_usage_operation_id_idx
+      ON youtube_quota_usage (operation_id);
   `);
 
   // Migration: add selected_channel_id if missing (idempotent)

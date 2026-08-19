@@ -9,11 +9,13 @@ import {
   resolveQuotaTimezone,
   type QuotaOperation,
 } from "./accountant";
+import { db } from "../db";
 import {
   listQuotaUsage,
   quotaUsageRepository,
   summarizeQuotaUsage,
 } from "../quota/repository";
+import { sql } from "drizzle-orm";
 
 test("in-memory quota accountant records safe entries and accumulates repeated calls", () => {
   const accountant = new InMemoryQuotaAccountant();
@@ -273,6 +275,21 @@ test("quota usage summaries aggregate by bucket, scope, and operation", async ()
         estimatedUnits: 2,
       },
     ],
+  );
+});
+
+test("quota usage schema has migration-safe reporting indexes", async () => {
+  const indexes = await db.all<{ name: string }>(sql`
+    SELECT name
+    FROM sqlite_master
+    WHERE type = 'index'
+      AND tbl_name = 'youtube_quota_usage'
+      AND name NOT LIKE 'sqlite_autoindex_%'
+  `);
+
+  assert.deepEqual(
+    indexes.map((index) => index.name).sort(),
+    ["youtube_quota_usage_operation_id_idx", "youtube_quota_usage_scope_date_operation_idx"].sort(),
   );
 });
 

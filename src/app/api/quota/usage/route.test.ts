@@ -179,5 +179,22 @@ test("quota usage route returns 500 when the repository fails", async () => {
   assert.equal(response.status, 500);
   assert.deepEqual(await response.json(), {
     error: "Unable to load quota usage",
+      });
+    });
+
+test("quota usage route returns 422 for a malformed request URL", async () => {
+  const handler = createQuotaUsageGetHandler({
+    getSession: async () => ({ user: { id: "user-1" } }),
+    repository: {
+      summarizeQuotaUsage: async () => summaries,
+    },
+  });
+
+  const response = await handler({ url: "not-a-url" } as Request);
+
+  assert.equal(response.status, 422);
+  assert.deepEqual(await response.json(), {
+    error: "Invalid quota usage query",
+    code: "INVALID_INPUT",
   });
 });

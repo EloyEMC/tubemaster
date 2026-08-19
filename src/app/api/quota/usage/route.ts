@@ -61,8 +61,14 @@ export function createQuotaUsageGetHandler(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const url = new URL(request.url);
-    for (const key of url.searchParams.keys()) {
+        let url: URL;
+        try {
+          url = new URL(request.url);
+        } catch {
+          return invalidQueryResponse();
+        }
+
+        for (const key of url.searchParams.keys()) {
       if (!QUOTA_USAGE_QUERY_KEYS.has(key)) return invalidQueryResponse();
     }
 
