@@ -13,6 +13,7 @@ export const YOUTUBE_QUOTA_COSTS = {
   "playlistItems.delete": 50,
   "captions.list": 50,
   "captions.download": 200,
+  "reports.query": 1,
 } as const;
 
 export type QuotaOperation = keyof typeof YOUTUBE_QUOTA_COSTS;
