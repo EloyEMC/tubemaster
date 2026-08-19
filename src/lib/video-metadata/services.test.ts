@@ -725,6 +725,183 @@ test("applyMetadata blocks when target language is not uniquely resolvable", asy
   }
 });
 
+test("applyMetadata emits correlated success trace with safe context", async () => {
+  const events: Array<{ event: string; context?: Record<string, unknown> }> =
+    [];
+  const services = createVideoMetadataServices(
+    makeDeps({
+      operationIdFactory: () => "operation-1",
+      logger: {
+        info: (payload) => events.push(payload),
+        error: (payload) => events.push(payload),
+      },
+    }),
+  );
+
+  await services.applyMetadata({
+    credentialRef: { userId: "user-1" },
+    videoId: "video-1",
+    finalTitle: "Sensitive title",
+    description: "Sensitive description",
+    expectedChannelId: "UC_ACTIVE",
+  });
+
+  assert.deepEqual(
+    events.map(({ event }) => event),
+    ["video_metadata.apply.started", "video_metadata.apply.success"],
+  );
+  for (const entry of events) {
+    assert.deepEqual(Object.keys(entry.context ?? {}).sort(), [
+      "dryRun",
+      "expectedChannelId",
+      "operationId",
+      "videoId",
+    ]);
+    assert.equal(entry.context?.operationId, "operation-1");
+    assert.equal("description" in (entry.context ?? {}), false);
+  }
+});
+
+test("applyMetadata emits dry-run trace without mutating", async () => {
+  const events: string[] = [];
+  let applyCalls = 0;
+  const services = createVideoMetadataServices(
+    makeDeps({
+      operationIdFactory: () => "dry-run-operation",
+      logger: {
+        info: ({ event }) => events.push(event),
+        error: ({ event }) => events.push(event),
+      },
+      youtubeApi: {
+        applyMetadataProposal: async () => {
+          applyCalls += 1;
+        },
+      },
+    }),
+  );
+
+  const result = await services.applyMetadata({
+    credentialRef: { userId: "user-1" },
+    videoId: "video-1",
+    finalTitle: "New title",
+    description: "New description",
+    expectedChannelId: "UC_ACTIVE",
+    dryRun: true,
+  });
+
+  assert.equal(result.dryRun, true);
+  assert.equal(applyCalls, 0);
+  assert.deepEqual(events, [
+    "video_metadata.apply.started",
+    "video_metadata.apply.dry_run",
+  ]);
+});
+
+test("applyMetadata reuses injected operation ID for provider failures", async () => {
+  const events: Array<{ event: string; context?: Record<string, unknown> }> =
+    [];
+  const services = createVideoMetadataServices(
+    makeDeps({
+      operationIdFactory: () => "failed-operation",
+      logger: {
+        info: (payload) => events.push(payload),
+        error: (payload) => events.push(payload),
+      },
+      youtubeApi: {
+        applyMetadataProposal: async () => {
+          throw new Error("provider secret details");
+        },
+      },
+    }),
+  );
+
+  await assert.rejects(
+    () =>
+      services.applyMetadata({
+        credentialRef: { userId: "user-1" },
+        videoId: "video-1",
+        finalTitle: "New title",
+        description: "New description",
+        expectedChannelId: "UC_ACTIVE",
+      }),
+    (error: unknown) =>
+      error instanceof DomainError && error.code === "update_failed",
+  );
+
+  assert.equal(events[1]?.event, "video_metadata.apply.error");
+  assert.equal(events[1]?.context?.operationId, "failed-operation");
+  assert.equal(events[1]?.context?.code, "update_failed");
+  assert.equal("message" in (events[1]?.context ?? {}), false);
+});
+
+test("applyMetadata traces guardrail rejection without exposing details", async () => {
+  const events: Array<{ event: string; context?: Record<string, unknown> }> =
+    [];
+  const services = createVideoMetadataServices(
+    makeDeps({
+      operationIdFactory: () => "guardrail-operation",
+      logger: {
+        info: (payload) => events.push(payload),
+        error: (payload) => events.push(payload),
+      },
+      writeContext: {
+        assertWriteChannel: async () => {
+          throw new DomainError({
+            code: "WRITE_CHANNEL_MISMATCH",
+            message: "secret guardrail details",
+          });
+        },
+      },
+    }),
+  );
+
+  await assert.rejects(
+    () =>
+      services.applyMetadata({
+        credentialRef: { userId: "user-1" },
+        videoId: "video-1",
+        finalTitle: "New title",
+        description: "New description",
+        expectedChannelId: "UC_EXPECTED",
+      }),
+    (error: unknown) =>
+      error instanceof DomainError && error.code === "WRITE_CHANNEL_MISMATCH",
+  );
+
+  assert.deepEqual(events[1]?.context, {
+    code: "WRITE_CHANNEL_MISMATCH",
+    dryRun: false,
+    expectedChannelId: "UC_EXPECTED",
+    operationId: "guardrail-operation",
+    videoId: "video-1",
+  });
+});
+
+test("applyMetadata ignores logger failures", async () => {
+  const services = createVideoMetadataServices(
+    makeDeps({
+      operationIdFactory: () => "logger-failure-operation",
+      logger: {
+        info: () => {
+          throw new Error("logger unavailable");
+        },
+        error: () => {
+          throw new Error("logger unavailable");
+        },
+      },
+    }),
+  );
+
+  const result = await services.applyMetadata({
+    credentialRef: { userId: "user-1" },
+    videoId: "video-1",
+    finalTitle: "New title",
+    description: "New description",
+    expectedChannelId: "UC_ACTIVE",
+  });
+  assert.equal(result.dryRun, false);
+});
+
 test("applyMetadata fails closed when write-channel guardrail rejects", async () => {
   let applyCalls = 0;
   const services = createVideoMetadataServices(
@@ -733,7 +910,8 @@ test("applyMetadata fails closed when write-channel guardrail rejects", async ()
         assertWriteChannel: async () => {
           throw new DomainError({
             code: "WRITE_CHANNEL_MISMATCH",
-            message: "expectedChannelId does not match the active write channel",
+            message:
+              "expectedChannelId does not match the active write channel",
             details: {
               expectedChannelId: "UC_EXPECTED",
               activeWriteChannelId: "UC_ACTIVE",
@@ -746,7 +924,7 @@ test("applyMetadata fails closed when write-channel guardrail rejects", async ()
           applyCalls += 1;
         },
       },
-    })
+    }),
   );
 
   await assert.rejects(
@@ -759,8 +937,128 @@ test("applyMetadata fails closed when write-channel guardrail rejects", async ()
         expectedChannelId: "UC_EXPECTED",
         dryRun: false,
       }),
-    (error: unknown) => error instanceof DomainError && error.code === "WRITE_CHANNEL_MISMATCH"
+    (error: unknown) =>
+      error instanceof DomainError && error.code === "WRITE_CHANNEL_MISMATCH",
   );
 
   assert.equal(applyCalls, 0);
+});
+
+test("applyMetadata accounts attempted reads and update with one operation ID", async () => {
+  const accountant = new InMemoryQuotaAccountant();
+  let updateCalls = 0;
+  const services = createVideoMetadataServices(
+    makeDeps({
+      operationIdFactory: () => "quota-operation",
+      quotaAccountant: accountant,
+      youtubeApi: {
+        applyMetadataProposal: async () => {
+          updateCalls += 1;
+        },
+      },
+    }),
+  );
+  const input = {
+    credentialRef: { userId: "user-1" },
+    videoId: "video-1",
+    finalTitle: "New title",
+    description: "New description",
+    expectedChannelId: "UC_ACTIVE",
+  };
+  await services.applyMetadata({ ...input, dryRun: true });
+  assert.deepEqual(
+    accountant.entries().map((entry) => [entry.operationId, entry.operation]),
+    [
+      ["quota-operation", "channels.list"],
+      ["quota-operation", "videos.list"],
+    ],
+  );
+  await services.applyMetadata(input);
+  assert.deepEqual(
+    accountant.entries().map((entry) => entry.operation),
+    [
+      "channels.list",
+      "videos.list",
+      "channels.list",
+      "videos.list",
+      "videos.update",
+    ],
+  );
+  assert.equal(updateCalls, 1);
+});
+
+test("applyMetadata isolates accountant failures", async () => {
+  const services = createVideoMetadataServices(
+    makeDeps({
+      quotaAccountant: {
+        record: () => {
+          throw new Error("accountant unavailable");
+        },
+      },
+    }),
+  );
+  const result = await services.applyMetadata({
+    credentialRef: { userId: "user-1" },
+    videoId: "video-1",
+    finalTitle: "New title",
+    description: "New description",
+    expectedChannelId: "UC_ACTIVE",
+  });
+  assert.equal(result.dryRun, false);
+});
+
+test("applyMetadata accounts attempted operations when guardrail or provider rejects", async () => {
+  const guardrailAccountant = new InMemoryQuotaAccountant();
+  const guardrailServices = createVideoMetadataServices(
+    makeDeps({
+      operationIdFactory: () => "guardrail-quota",
+      quotaAccountant: guardrailAccountant,
+      writeContext: {
+        assertWriteChannel: async () => {
+          throw new DomainError({
+            code: "WRITE_CHANNEL_MISMATCH",
+            message: "rejected",
+          });
+        },
+      },
+    }),
+  );
+  await assert.rejects(() =>
+    guardrailServices.applyMetadata({
+      credentialRef: { userId: "user-1" },
+      videoId: "video-1",
+      finalTitle: "t",
+      description: "d",
+      expectedChannelId: "UC_EXPECTED",
+    }),
+  );
+  assert.deepEqual(
+    guardrailAccountant.entries().map((entry) => entry.operation),
+    ["channels.list"],
+  );
+  const providerAccountant = new InMemoryQuotaAccountant();
+  const providerServices = createVideoMetadataServices(
+    makeDeps({
+      operationIdFactory: () => "provider-quota",
+      quotaAccountant: providerAccountant,
+      youtubeApi: {
+        applyMetadataProposal: async () => {
+          throw new Error("provider failure");
+        },
+      },
+    }),
+  );
+  await assert.rejects(() =>
+    providerServices.applyMetadata({
+      credentialRef: { userId: "user-1" },
+      videoId: "video-1",
+      finalTitle: "t",
+      description: "d",
+      expectedChannelId: "UC_ACTIVE",
+    }),
+  );
+  assert.deepEqual(
+    providerAccountant.entries().map((entry) => entry.operation),
+    ["channels.list", "videos.list", "videos.update"],
+  );
 });
