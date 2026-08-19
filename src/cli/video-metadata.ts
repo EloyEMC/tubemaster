@@ -9,6 +9,11 @@ import type { VideoMetadataCore } from "@/lib/video-metadata";
 import { createPlaylistManagementCore, type PlaylistManagementCore } from "@/lib/playlist-management";
 import { createCliAuthService } from "@/lib/cli-auth/service";
 import type { CredentialRef } from "@/lib/video-metadata/contracts";
+import {
+  summarizeQuotaUsage,
+  type QuotaUsageSummary,
+  type QuotaUsageSummaryFilter,
+} from "@/lib/quota/repository";
 
 loadEnvConfig(process.cwd());
 
@@ -26,7 +31,7 @@ type CliAuthAdapter = {
 };
 
 export type ParsedArgs = {
-  namespace: "metadata" | "auth" | "playlist";
+  namespace: "metadata" | "auth" | "playlist" | "quota";
   command:
     | "list"
     | "transcript"
@@ -44,7 +49,8 @@ export type ParsedArgs = {
     | "list-users"
     | "select-user"
     | "logout"
-    | "revoke";
+    | "revoke"
+    | "usage";
   flags: Record<string, string | boolean>;
 };
 
@@ -52,21 +58,25 @@ export function parseArgs(argv: string[]): ParsedArgs {
   const [namespaceRaw, maybeCommandRaw, ...remaining] = argv;
   const isAuthNamespace = namespaceRaw === "auth";
   const isPlaylistNamespace = namespaceRaw === "playlist";
+  const isQuotaNamespace = namespaceRaw === "quota";
   const commandRaw =
-    isAuthNamespace || isPlaylistNamespace ? maybeCommandRaw : namespaceRaw;
+    isAuthNamespace || isPlaylistNamespace || isQuotaNamespace ? maybeCommandRaw : namespaceRaw;
   const flagTokens =
-    isAuthNamespace || isPlaylistNamespace
+    isAuthNamespace || isPlaylistNamespace || isQuotaNamespace
       ? remaining
       : [maybeCommandRaw, ...remaining].filter(Boolean);
 
   const validMetadataCommands = ["list", "transcript", "preview", "apply"];
   const validAuthCommands = ["login", "whoami", "list-channels", "select-channel", "list-users", "select-user", "logout", "revoke"];
   const validPlaylistCommands = ["list", "create", "update", "delete", "add", "remove"];
+  const validQuotaCommands = ["usage"];
   const validCommands = isAuthNamespace
     ? validAuthCommands
     : isPlaylistNamespace
       ? validPlaylistCommands
-      : validMetadataCommands;
+      : isQuotaNamespace
+        ? validQuotaCommands
+        : validMetadataCommands;
 
   if (!commandRaw || !validCommands.includes(commandRaw)) {
     throw new DomainError({
@@ -75,7 +85,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
         ? "Auth command must be one of: login, whoami, list-channels, select-channel, list-users, select-user, logout, revoke"
         : isPlaylistNamespace
           ? "Playlist command must be one of: list, create, update, delete, add, remove"
-          : "Command must be one of: list, transcript, preview, apply",
+            : isQuotaNamespace
+              ? "Quota command must be one of: usage"
+              : "Command must be one of: list, transcript, preview, apply",
     });
   }
 
@@ -102,8 +114,21 @@ export function parseArgs(argv: string[]): ParsedArgs {
     i += 1;
   }
 
+  if (isQuotaNamespace && Object.keys(flags).length > 0) {
+    throw new DomainError({
+      code: "validation_failed",
+      message: "Quota usage does not accept flags",
+    });
+  }
+
   return {
-    namespace: isAuthNamespace ? "auth" : isPlaylistNamespace ? "playlist" : "metadata",
+    namespace: isAuthNamespace
+      ? "auth"
+      : isPlaylistNamespace
+        ? "playlist"
+        : isQuotaNamespace
+          ? "quota"
+          : "metadata",
     command: commandRaw as ParsedArgs["command"],
     flags,
   };
@@ -190,6 +215,27 @@ function serializeError(error: unknown) {
   });
 }
 
+type QuotaReader = {
+  summarizeQuotaUsage(filter: QuotaUsageSummaryFilter): Promise<QuotaUsageSummary[]>;
+};
+
+function activeUserId(value: unknown): string {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "userId" in value &&
+    typeof value.userId === "string" &&
+    value.userId.length > 0
+  ) {
+    return value.userId;
+  }
+
+  throw new DomainError({
+    code: "validation_failed",
+    message: "Authenticated user identity is unavailable",
+  });
+}
+
 export async function runCliCommand(args: {
   argv: string[];
   core?: Pick<
@@ -203,6 +249,7 @@ export async function runCliCommand(args: {
     | "removeVideosFromPlaylist"
   >;
   auth?: CliAuthAdapter;
+  quotaReader?: QuotaReader;
   writeStdout?: (line: string) => void;
   writeStderr?: (line: string) => void;
 }): Promise<number> {
@@ -211,6 +258,7 @@ export async function runCliCommand(args: {
     ...createPlaylistManagementCore(),
   };
   const auth = args.auth ?? createCliAuthService();
+  const quotaReader = args.quotaReader ?? { summarizeQuotaUsage };
   const writeStdout =
     args.writeStdout ?? ((line: string) => process.stdout.write(`${line}\n`));
   const writeStderr =
@@ -276,6 +324,16 @@ export async function runCliCommand(args: {
       const revokeUserId =
         typeof parsedArgs.flags.userId === "string" ? parsedArgs.flags.userId : undefined;
       const result = await auth.revoke({ userId: revokeUserId });
+      writeStdout(serializeSuccess(result));
+      return 0;
+    }
+
+    if (parsedArgs.namespace === "quota") {
+      const user = await auth.whoami();
+      const result = await quotaReader.summarizeQuotaUsage({
+        scopeType: "user",
+        scopeId: activeUserId(user),
+      });
       writeStdout(serializeSuccess(result));
       return 0;
     }

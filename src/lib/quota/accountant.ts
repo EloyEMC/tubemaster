@@ -13,6 +13,7 @@ export const YOUTUBE_QUOTA_COSTS = {
   "playlistItems.delete": 50,
   "captions.list": 50,
   "captions.download": 200,
+  // YouTube Analytics reports.query is observationally accounted at one unit.
   "reports.query": 1,
 } as const;
 

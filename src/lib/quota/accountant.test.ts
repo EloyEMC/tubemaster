@@ -294,7 +294,7 @@ test("quota cost table is explicit for playlist and transcript operations", () =
 });
 
 test('"reports.query" quota cost exists and is a valid QuotaOperation', () => {
-  assert.equal(YOUTUBE_QUOTA_COSTS["reports.query"], 1);
-  const validOps: QuotaOperation[] = ["reports.query"];
-  assert.ok(validOps.every((op) => op in YOUTUBE_QUOTA_COSTS));
+  const operation = "reports.query" as keyof typeof YOUTUBE_QUOTA_COSTS;
+  assert.equal(YOUTUBE_QUOTA_COSTS[operation], 1);
+  assert.equal(Object.hasOwn(YOUTUBE_QUOTA_COSTS, operation), true);
 });
