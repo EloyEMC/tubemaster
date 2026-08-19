@@ -14,6 +14,19 @@ import {
   type VideoMetadataContext,
 } from "../contracts";
 
+export function cloneVideoMetadataContext(
+  context: VideoMetadataContext,
+): VideoMetadataContext {
+  try {
+    return structuredClone(context);
+  } catch {
+    throw new DomainError({
+      code: "validation_failed",
+      message: "Video metadata context cannot be safely cloned",
+    });
+  }
+}
+
 function createAuthorizedClient(credentials: ResolvedCredentials) {
   const oauth2 = createGoogleOAuthClient();
   oauth2.setCredentials({
@@ -41,10 +54,17 @@ export function createYoutubeApiAdapter() {
         });
       }
 
-      return listVideosByChannel({ youtube, channelId, maxResults: args.maxResults });
+      return listVideosByChannel({
+        youtube,
+        channelId,
+        maxResults: args.maxResults,
+      });
     },
 
-    async getVideo(args: { credentials: ResolvedCredentials; videoId: string }) {
+    async getVideo(args: {
+      credentials: ResolvedCredentials;
+      videoId: string;
+    }) {
       const youtube = createAuthorizedClient(args.credentials);
       const video = await getVideoById(youtube, args.videoId);
 
@@ -59,7 +79,10 @@ export function createYoutubeApiAdapter() {
       return video;
     },
 
-    async getVideoMetadataContext(args: { credentials: ResolvedCredentials; videoId: string }) {
+    async getVideoMetadataContext(args: {
+      credentials: ResolvedCredentials;
+      videoId: string;
+    }) {
       const youtube = createAuthorizedClient(args.credentials);
       const context = await getVideoMetadataContext(youtube, args.videoId);
 
@@ -71,7 +94,7 @@ export function createYoutubeApiAdapter() {
         });
       }
 
-      return JSON.parse(JSON.stringify(context)) as VideoMetadataContext;
+      return cloneVideoMetadataContext(context as VideoMetadataContext);
     },
 
     async applyMetadataProposal(args: {
@@ -79,7 +102,8 @@ export function createYoutubeApiAdapter() {
       proposal: MetadataSyncProposal;
     }) {
       const youtube = createAuthorizedClient(args.credentials);
-      const targetLocalization = args.proposal.update.localizations[args.proposal.targetLanguage];
+      const targetLocalization =
+        args.proposal.update.localizations[args.proposal.targetLanguage];
 
       if (!targetLocalization) {
         throw new DomainError({

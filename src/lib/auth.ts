@@ -3,6 +3,7 @@ import GoogleProvider from "next-auth/providers/google";
 import { google } from "googleapis";
 import { createHash, randomBytes } from "node:crypto";
 import { upsertUserOAuthOnSignIn } from "./db";
+import { DomainError } from "./video-metadata/contracts";
 
 export const YOUTUBE_READ_SCOPE =
   "https://www.googleapis.com/auth/youtube.readonly";
@@ -57,7 +58,7 @@ export function createGoogleOAuthClient(redirectUri?: string) {
   return new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    redirectUri
+    redirectUri,
   );
 }
 
@@ -67,19 +68,38 @@ export function buildGoogleLoopbackAuthUrl(args: {
   codeChallenge: string;
   scopes?: readonly string[];
 }) {
-  const oauthClient = createGoogleOAuthClient(args.redirectUri);
-  const authUrl = oauthClient.generateAuthUrl({
-    access_type: "offline",
-    prompt: "select_account consent",
-    scope: (args.scopes ?? YOUTUBE_SCOPES) as string[],
-    state: args.state,
-    redirect_uri: args.redirectUri,
-  });
+  const inputFields = ["redirectUri", "state", "codeChallenge"] as const;
+  for (const field of inputFields) {
+    if (typeof args[field] !== "string" || args[field].length === 0) {
+      throw new DomainError({
+        code: "validation_failed",
+        message: "Invalid OAuth authorization URL input",
+        details: { field },
+      });
+    }
+  }
 
-  const url = new URL(authUrl);
-  url.searchParams.set("code_challenge_method", "S256");
-  url.searchParams.set("code_challenge", args.codeChallenge);
-  return url.toString();
+  try {
+    const oauthClient = createGoogleOAuthClient(args.redirectUri);
+    const authUrl = oauthClient.generateAuthUrl({
+      access_type: "offline",
+      prompt: "select_account consent",
+      scope: (args.scopes ?? YOUTUBE_SCOPES) as string[],
+      state: args.state,
+      redirect_uri: args.redirectUri,
+    });
+
+    const url = new URL(authUrl);
+    url.searchParams.set("code_challenge_method", "S256");
+    url.searchParams.set("code_challenge", args.codeChallenge);
+    return url.toString();
+  } catch {
+    throw new DomainError({
+      code: "validation_failed",
+      message: "Google OAuth authorization URL generation failed",
+      details: { stage: "provider_output" },
+    });
+  }
 }
 
 function mapTokenSet(credentials: {
@@ -96,7 +116,9 @@ function mapTokenSet(credentials: {
   return {
     accessToken: credentials.access_token,
     refreshToken: credentials.refresh_token ?? null,
-    tokenExpiry: credentials.expiry_date ? Math.floor(credentials.expiry_date / 1000) : null,
+    tokenExpiry: credentials.expiry_date
+      ? Math.floor(credentials.expiry_date / 1000)
+      : null,
     scope: credentials.scope ?? null,
     idToken: credentials.id_token ?? null,
   };
@@ -156,7 +178,11 @@ export async function startGoogleDeviceAuthorization(args?: {
   };
 
   if (!response.ok || !payload.device_code || !payload.user_code) {
-    throw new Error(payload.error_description ?? payload.error ?? "Device authorization failed");
+    throw new Error(
+      payload.error_description ??
+        payload.error ??
+        "Device authorization failed",
+    );
   }
 
   return {
@@ -238,20 +264,28 @@ export async function pollGoogleDeviceAuthorizationToken(args: {
       throw new Error("Device authorization denied by user");
     }
 
-    throw new Error(payload.error_description ?? payload.error ?? "Device authorization failed");
+    throw new Error(
+      payload.error_description ??
+        payload.error ??
+        "Device authorization failed",
+    );
   }
 
   throw new Error("Device authorization timed out");
 }
 
-function decodeIdentityFromIdToken(idToken: string | null): GoogleIdentity | null {
+function decodeIdentityFromIdToken(
+  idToken: string | null,
+): GoogleIdentity | null {
   if (!idToken) return null;
 
   const [, payloadBase64] = idToken.split(".");
   if (!payloadBase64) return null;
 
   try {
-    const decoded = JSON.parse(Buffer.from(payloadBase64, "base64url").toString("utf8")) as {
+    const decoded = JSON.parse(
+      Buffer.from(payloadBase64, "base64url").toString("utf8"),
+    ) as {
       sub?: string;
       email?: string;
       name?: string;
@@ -278,11 +312,14 @@ export async function fetchGoogleIdentity(args: {
   const fromIdToken = decodeIdentityFromIdToken(args.idToken ?? null);
   if (fromIdToken) return fromIdToken;
 
-  const response = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
-    headers: {
-      authorization: `Bearer ${args.accessToken}`,
+  const response = await fetch(
+    "https://openidconnect.googleapis.com/v1/userinfo",
+    {
+      headers: {
+        authorization: `Bearer ${args.accessToken}`,
+      },
     },
-  });
+  );
 
   const payload = (await response.json()) as {
     sub?: string;

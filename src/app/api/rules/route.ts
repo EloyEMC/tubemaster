@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   if (!name || !matchField || !matchType || !matchValue || !playlistId) {
     return NextResponse.json(
       { error: "Missing required fields" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -57,7 +57,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { searchParams } = new URL(request.url);
+  const { searchParams } = request.nextUrl;
   const id = searchParams.get("id");
   if (!id) {
     return NextResponse.json({ error: "Missing rule id" }, { status: 400 });

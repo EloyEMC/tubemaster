@@ -6,13 +6,26 @@ import { createVideoMetadataCore } from "@/lib/video-metadata";
 
 const videoMetadataCore = createVideoMetadataCore();
 
+export function parseRequestUrl(request: Request): URL | null {
+  try {
+    return new URL(request.url);
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { searchParams } = new URL(request.url);
+  const url = parseRequestUrl(request);
+  if (!url) {
+    return NextResponse.json({ error: "Invalid request URL" }, { status: 400 });
+  }
+
+  const { searchParams } = url;
   if (searchParams.get("debug") === "1") {
     const youtube = await getAuthenticatedYoutube(session.user.id);
     const channels = await youtube.channels.list({
