@@ -82,7 +82,53 @@ test("quota usage route forwards safe filters while preserving user scope", asyn
   ]);
 });
 
-test("quota usage route rejects an invalid bucket date without a repository call", async () => {
+    test("quota usage route forwards channel filtering without changing user scope", async () => {
+      const filters: unknown[] = [];
+      const handler = createQuotaUsageGetHandler({
+        getSession: async () => ({ user: { id: "user-1" } }),
+        repository: {
+          summarizeQuotaUsage: async (filter) => {
+            filters.push(filter);
+            return summaries;
+          },
+        },
+      });
+
+      const response = await handler(
+        new Request("http://localhost/api/quota/usage?channelId=channel-a"),
+      );
+
+      assert.equal(response.status, 200);
+      assert.deepEqual(filters, [
+        { scopeType: "user", scopeId: "user-1", channelId: "channel-a" },
+      ]);
+    });
+
+    test("quota usage route rejects empty or invalid channel filters", async () => {
+      for (const channelId of ["", "   ", "channel/a"]) {
+        let repositoryCalls = 0;
+        const handler = createQuotaUsageGetHandler({
+          getSession: async () => ({ user: { id: "user-1" } }),
+          repository: {
+            summarizeQuotaUsage: async () => {
+              repositoryCalls += 1;
+              return summaries;
+            },
+          },
+        });
+
+        const response = await handler(
+          new Request(
+            `http://localhost/api/quota/usage?channelId=${encodeURIComponent(channelId)}`,
+          ),
+        );
+
+        assert.equal(response.status, 422);
+        assert.equal(repositoryCalls, 0);
+      }
+    });
+
+    test("quota usage route rejects an invalid bucket date without a repository call", async () => {
   let repositoryCalls = 0;
   const handler = createQuotaUsageGetHandler({
     getSession: async () => ({ user: { id: "user-1" } }),
@@ -106,31 +152,31 @@ test("quota usage route rejects an invalid bucket date without a repository call
   assert.equal(repositoryCalls, 0);
 });
 
-    test("quota usage route rejects an unknown operation without a repository call", async () => {
-      let repositoryCalls = 0;
-      const handler = createQuotaUsageGetHandler({
-        getSession: async () => ({ user: { id: "user-1" } }),
-        repository: {
-          summarizeQuotaUsage: async () => {
-            repositoryCalls += 1;
-            return summaries;
-          },
-        },
-      });
+test("quota usage route rejects an unknown operation without a repository call", async () => {
+  let repositoryCalls = 0;
+  const handler = createQuotaUsageGetHandler({
+    getSession: async () => ({ user: { id: "user-1" } }),
+    repository: {
+      summarizeQuotaUsage: async () => {
+        repositoryCalls += 1;
+        return summaries;
+      },
+    },
+  });
 
-      const response = await handler(
-        new Request("http://localhost/api/quota/usage?operation=unknown.operation"),
-      );
+  const response = await handler(
+    new Request("http://localhost/api/quota/usage?operation=unknown.operation"),
+  );
 
-      assert.equal(response.status, 422);
-      assert.deepEqual(await response.json(), {
-        error: "Invalid quota usage query",
-        code: "INVALID_INPUT",
-      });
-      assert.equal(repositoryCalls, 0);
-    });
+  assert.equal(response.status, 422);
+  assert.deepEqual(await response.json(), {
+    error: "Invalid quota usage query",
+    code: "INVALID_INPUT",
+  });
+  assert.equal(repositoryCalls, 0);
+});
 
-    test("quota usage route rejects caller-controlled scope filters", async () => {
+test("quota usage route rejects caller-controlled scope filters", async () => {
   let repositoryCalls = 0;
   const handler = createQuotaUsageGetHandler({
     getSession: async () => ({ user: { id: "user-1" } }),
@@ -144,7 +190,7 @@ test("quota usage route rejects an invalid bucket date without a repository call
 
   const response = await handler(
     new Request(
-      "http://localhost/api/quota/usage?scopeType=global&scopeId=other-user",
+      "http://localhost/api/quota/usage?scopeType=global&scopeId=other-user&channelId=channel-a",
     ),
   );
 
@@ -179,8 +225,8 @@ test("quota usage route returns 500 when the repository fails", async () => {
   assert.equal(response.status, 500);
   assert.deepEqual(await response.json(), {
     error: "Unable to load quota usage",
-      });
-    });
+  });
+});
 
 test("quota usage route returns 422 for a malformed request URL", async () => {
   const handler = createQuotaUsageGetHandler({

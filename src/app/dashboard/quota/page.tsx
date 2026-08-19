@@ -8,6 +8,7 @@ type QuotaSummary = {
   bucketStart: string;
   operation: string;
   operationId: string;
+  channelId?: string;
   operationCount: number;
   estimatedUnits: number;
 };
@@ -135,6 +136,7 @@ export default function QuotaPage() {
                   <tr>
                     <th className="px-4 py-3 font-medium">Day</th>
                     <th className="px-4 py-3 font-medium">Operation</th>
+                    <th className="px-4 py-3 font-medium">Channel</th>
                     <th className="px-4 py-3 font-medium">Operation ID</th>
                     <th className="px-4 py-3 text-right font-medium">
                       Operations
@@ -154,6 +156,9 @@ export default function QuotaPage() {
                       </td>
                       <td className="px-4 py-3 text-zinc-300">
                         {summary.operation}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-zinc-400">
+                        {summary.channelId ?? "—"}
                       </td>
                       <td className="px-4 py-3 font-mono text-xs text-zinc-400">
                         {summary.operationId}

@@ -21,6 +21,7 @@ const QUOTA_USAGE_QUERY_KEYS = new Set([
   "bucketStart",
   "operation",
   "operationId",
+  "channelId",
 ]);
 
 function isCalendarDate(value: string): boolean {
@@ -35,8 +36,12 @@ function isCalendarDate(value: string): boolean {
   );
 }
 
-function invalidQueryResponse() {
-  return NextResponse.json(
+    function isValidChannelId(value: string): boolean {
+      return value.length > 0 && /^[A-Za-z0-9_-]+$/.test(value);
+    }
+
+    function invalidQueryResponse() {
+      return NextResponse.json(
     {
       error: "Invalid quota usage query",
       code: "INVALID_INPUT",
@@ -61,14 +66,14 @@ export function createQuotaUsageGetHandler(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-        let url: URL;
-        try {
-          url = new URL(request.url);
-        } catch {
-          return invalidQueryResponse();
-        }
+    let url: URL;
+    try {
+      url = new URL(request.url);
+    } catch {
+      return invalidQueryResponse();
+    }
 
-        for (const key of url.searchParams.keys()) {
+    for (const key of url.searchParams.keys()) {
       if (!QUOTA_USAGE_QUERY_KEYS.has(key)) return invalidQueryResponse();
     }
 
@@ -91,11 +96,17 @@ export function createQuotaUsageGetHandler(
       filter.operation = operation;
     }
 
-    const operationId = url.searchParams.get("operationId");
-    if (operationId !== null) filter.operationId = operationId;
+        const operationId = url.searchParams.get("operationId");
+        if (operationId !== null) filter.operationId = operationId;
 
-    try {
-      const summaries = await deps.repository.summarizeQuotaUsage(filter);
+        const channelId = url.searchParams.get("channelId");
+        if (channelId !== null) {
+          if (!isValidChannelId(channelId)) return invalidQueryResponse();
+          filter.channelId = channelId;
+        }
+
+        try {
+          const summaries = await deps.repository.summarizeQuotaUsage(filter);
 
       return NextResponse.json({ summaries });
     } catch {

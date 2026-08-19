@@ -69,10 +69,10 @@ npm run cli:video-metadata -- playlist remove --playlistId <PLAYLIST_ID> --video
 ### Quota usage
 
 ```bash
-npm run cli:video-metadata -- quota usage
+npm run cli:video-metadata -- quota usage [--channelId <CHANNEL_ID>]
 ```
 
-`quota usage` uses the active authenticated user and accepts no user or scope override. It returns the standard JSON envelope with grouped estimated usage.
+`quota usage` uses the active authenticated user and optionally filters by channel. It never accepts a user or scope override and returns the standard JSON envelope with grouped estimated usage.
 
 ---
 
@@ -96,9 +96,9 @@ Key MCP tools:
   - `playlist_list`, `playlist_create`, `playlist_update`, `playlist_delete`
   - `playlist_add_videos`, `playlist_remove_videos`
 - Quota tool:
-  - `quota_usage` (read-only, empty input, active-user scope only)
+  - `quota_usage` (read-only, optional `channelId`, active-user scope only)
 
-Most tools accept optional `credentialRef`; if omitted, server falls back to active local auth context. `quota_usage` intentionally does not accept a credential or scope override.
+Most tools accept optional `credentialRef`; if omitted, server falls back to active local auth context. `quota_usage` optionally accepts `channelId`, but intentionally does not accept a credential or scope override.
 
 ---
 
@@ -118,7 +118,8 @@ All routes are App Router handlers and require authenticated session user.
     ### Quota usage API
 
     - `GET /api/quota/usage`
-      - Optional filters: `bucketStart=YYYY-MM-DD`, `operation`, `operationId`.
+      - Optional filters: `bucketStart=YYYY-MM-DD`, `operation`, `operationId`, `channelId`.
+      - `channelId` must be a non-empty channel identifier using letters, numbers, `_`, or `-`.
       - Always scopes results to the authenticated session user; `scopeType` and `scopeId` cannot be supplied by callers.
       - Returns `401` without a session, `422` for invalid filters, and `500` for repository failures.
       - Response values are estimated recorded usage, not authoritative remaining YouTube quota.
