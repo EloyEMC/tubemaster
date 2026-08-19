@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { formatQuotaBucketStart } from "./formatter";
 
 type QuotaSummary = {
   bucketStart: string;
@@ -16,17 +17,6 @@ type QuotaResponse = {
 };
 
 const numberFormatter = new Intl.NumberFormat("en-US");
-
-function formatBucketStart(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : date.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-}
 
 export default function QuotaPage() {
   const [summaries, setSummaries] = useState<QuotaSummary[]>([]);
@@ -156,7 +146,7 @@ export default function QuotaPage() {
                   {summaries.map((summary) => (
                     <tr key={`${summary.bucketStart}-${summary.operation}`}>
                       <td className="px-4 py-3 text-zinc-300">
-                        {formatBucketStart(summary.bucketStart)}
+                        {formatQuotaBucketStart(summary.bucketStart)}
                       </td>
                       <td className="px-4 py-3 text-zinc-300">
                         {summary.operation}
