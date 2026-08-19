@@ -28,13 +28,13 @@ import {
 import { createWriteContextYoutubeApiAdapter } from "@/lib/write-context/adapters/youtube-api";
 import { createWriteContextService } from "@/lib/write-context/service";
 import type { WriteChannelContext } from "@/lib/write-context/contracts";
-import type { CredentialRef, ResolvedCredentials } from "@/lib/video-metadata/contracts";
+import type {
+  CredentialRef,
+  ResolvedCredentials,
+} from "@/lib/video-metadata/contracts";
 import { DomainError } from "@/lib/video-metadata/contracts";
 import { resolveGoogleCredentials } from "@/lib/video-metadata/adapters/google-auth";
-import {
-  authCallbackInvalid,
-  authUserNotFound,
-} from "./errors";
+import { authCallbackInvalid, authUserNotFound } from "./errors";
 import { createActiveAuthStorage, type ActiveAuthStorage } from "./storage";
 
 export type AuthUserSummary = OAuthUserSummary & { isActive: boolean };
@@ -106,28 +106,49 @@ type CliAuthServiceDependencies = {
       recommendedAction: string | null;
     }>;
   };
-    db: {
+  db: {
     upsertUser: typeof upsertOAuthUserFromCli;
     listUsers: typeof listOAuthUsers;
     getUserSummary: typeof getOAuthUserSummary;
     getUserTokens: typeof getUserOAuthTokens;
-      clearUserTokens: typeof clearUserOAuthTokens;
-      getSelectedChannelId: typeof getSelectedChannelId;
-      setSelectedChannelId: typeof setSelectedChannelId;
-    };
+    clearUserTokens: typeof clearUserOAuthTokens;
+    getSelectedChannelId: typeof getSelectedChannelId;
+    setSelectedChannelId: typeof setSelectedChannelId;
+  };
   startLoopbackCallbackServer: (args: {
     expectedState: string;
     timeoutMs: number;
-  }) => Promise<{ redirectUri: string; waitForCallback: Promise<LoopbackCallbackResult> }>;
+  }) => Promise<{
+    redirectUri: string;
+    waitForCallback: Promise<LoopbackCallbackResult>;
+  }>;
 };
 
+export function getDefaultBrowserCommand(
+  platform: NodeJS.Platform,
+  url: string,
+) {
+  if (platform === "darwin") {
+    return { command: "open", args: [url] };
+  }
+
+  if (platform === "win32") {
+    return {
+      command: "rundll32.exe",
+      args: ["url.dll,FileProtocolHandler", url],
+    };
+  }
+
+  return { command: "xdg-open", args: [url] };
+}
+
 function defaultOpenBrowser(url: string) {
-  const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+  const { command, args } = getDefaultBrowserCommand(process.platform, url);
 
   return new Promise<void>((resolve, reject) => {
-    const child = spawn(command, [url], {
+    const child = spawn(command, args, {
       stdio: "ignore",
-      shell: process.platform === "win32",
+      shell: false,
       detached: true,
     });
 
@@ -140,66 +161,81 @@ function defaultOpenBrowser(url: string) {
 function createLoopbackCallbackServer(args: {
   expectedState: string;
   timeoutMs: number;
-}): Promise<{ redirectUri: string; waitForCallback: Promise<LoopbackCallbackResult> }> {
+}): Promise<{
+  redirectUri: string;
+  waitForCallback: Promise<LoopbackCallbackResult>;
+}> {
   return new Promise((resolve, reject) => {
     const server = createServer();
     const loopbackPort = Number(process.env.CLI_OAUTH_CALLBACK_PORT ?? "8787");
 
-    const waitForCallback = new Promise<LoopbackCallbackResult>((innerResolve, innerReject) => {
-      const timeout = setTimeout(() => {
-        server.close();
-        innerReject(
-          authCallbackInvalid("OAuth callback timeout. Retry with `auth login`.", {
-            reason: "timeout",
-          })
-        );
-      }, args.timeoutMs);
+    const waitForCallback = new Promise<LoopbackCallbackResult>(
+      (innerResolve, innerReject) => {
+        const timeout = setTimeout(() => {
+          server.close();
+          innerReject(
+            authCallbackInvalid(
+              "OAuth callback timeout. Retry with `auth login`.",
+              {
+                reason: "timeout",
+              },
+            ),
+          );
+        }, args.timeoutMs);
 
-      server.on("request", (req, res) => {
-        try {
-          const callbackUrl = new URL(req.url ?? "/", `http://${req.headers.host ?? "127.0.0.1"}`);
-          const state = callbackUrl.searchParams.get("state");
-          const code = callbackUrl.searchParams.get("code");
-          const error = callbackUrl.searchParams.get("error");
+        server.on("request", (req, res) => {
+          try {
+            const callbackUrl = new URL(
+              req.url ?? "/",
+              `http://${req.headers.host ?? "127.0.0.1"}`,
+            );
+            const state = callbackUrl.searchParams.get("state");
+            const code = callbackUrl.searchParams.get("code");
+            const error = callbackUrl.searchParams.get("error");
 
-          if (error) {
-            res.statusCode = 400;
-            res.end("Authorization failed. You can close this tab.");
+            if (error) {
+              res.statusCode = 400;
+              res.end("Authorization failed. You can close this tab.");
+              clearTimeout(timeout);
+              server.close();
+              innerReject(
+                authCallbackInvalid("OAuth callback returned an error", {
+                  reason: error,
+                }),
+              );
+              return;
+            }
+
+            if (!code || !state || state !== args.expectedState) {
+              res.statusCode = 400;
+              res.end("Invalid callback payload. You can close this tab.");
+              clearTimeout(timeout);
+              server.close();
+              innerReject(
+                authCallbackInvalid("OAuth callback state validation failed", {
+                  reason: "invalid_state_or_code",
+                }),
+              );
+              return;
+            }
+
+            res.statusCode = 200;
+            res.end("Authorization complete. You can close this tab.");
+            clearTimeout(timeout);
+            server.close();
+            innerResolve({ code, state });
+          } catch {
             clearTimeout(timeout);
             server.close();
             innerReject(
-              authCallbackInvalid("OAuth callback returned an error", {
-                reason: error,
-              })
+              authCallbackInvalid("Failed to process OAuth callback", {
+                reason: "parse_error",
+              }),
             );
-            return;
           }
-
-          if (!code || !state || state !== args.expectedState) {
-            res.statusCode = 400;
-            res.end("Invalid callback payload. You can close this tab.");
-            clearTimeout(timeout);
-            server.close();
-            innerReject(
-              authCallbackInvalid("OAuth callback state validation failed", {
-                reason: "invalid_state_or_code",
-              })
-            );
-            return;
-          }
-
-          res.statusCode = 200;
-          res.end("Authorization complete. You can close this tab.");
-          clearTimeout(timeout);
-          server.close();
-          innerResolve({ code, state });
-        } catch {
-          clearTimeout(timeout);
-          server.close();
-          innerReject(authCallbackInvalid("Failed to process OAuth callback", { reason: "parse_error" }));
-        }
-      });
-    });
+        });
+      },
+    );
 
     server.listen(loopbackPort, "127.0.0.1", () => {
       const address = server.address();
@@ -219,7 +255,7 @@ function createLoopbackCallbackServer(args: {
         authCallbackInvalid("Loopback callback server failed", {
           reason: error.message,
           port: loopbackPort,
-        })
+        }),
       );
     });
   });
@@ -227,7 +263,7 @@ function createLoopbackCallbackServer(args: {
 
 function toAuthUserSummary(
   user: OAuthUserSummary,
-  activeUserId: string | null
+  activeUserId: string | null,
 ): AuthUserSummary {
   return {
     ...user,
@@ -240,7 +276,10 @@ const selectWriteChannelInputSchema = z
     channelId: z
       .string()
       .min(1, "channelId is required")
-      .regex(/^UC[a-zA-Z0-9_-]{22}$/, "channelId must be a valid YouTube channel id"),
+      .regex(
+        /^UC[a-zA-Z0-9_-]{22}$/,
+        "channelId must be a valid YouTube channel id",
+      ),
     credentialRef: z
       .union([
         z.object({ userId: z.string().min(1) }).strict(),
@@ -327,7 +366,7 @@ async function persistAuthenticatedUser(args: {
 }
 
 export function createCliAuthService(
-  deps: Partial<CliAuthServiceDependencies> = {}
+  deps: Partial<CliAuthServiceDependencies> = {},
 ) {
   const resolvedDeps: CliAuthServiceDependencies = {
     storage: deps.storage ?? createActiveAuthStorage(),
@@ -361,7 +400,8 @@ export function createCliAuthService(
       getSelectedChannelId,
       setSelectedChannelId,
     },
-    startLoopbackCallbackServer: deps.startLoopbackCallbackServer ?? createLoopbackCallbackServer,
+    startLoopbackCallbackServer:
+      deps.startLoopbackCallbackServer ?? createLoopbackCallbackServer,
   };
 
   async function resolveEffectiveCredentialRef(args: {
@@ -373,16 +413,22 @@ export function createCliAuthService(
 
     const context = await resolvedDeps.storage.read();
     if (!context) {
-      throw authUserNotFound("No active auth context. Run `auth login` first.", {
-        reason: "active_user_missing",
-      });
+      throw authUserNotFound(
+        "No active auth context. Run `auth login` first.",
+        {
+          reason: "active_user_missing",
+        },
+      );
     }
 
     const user = await resolvedDeps.db.getUserSummary(context.activeUserId);
     if (!user) {
-      throw authUserNotFound("Active auth user does not exist in local storage", {
-        userId: context.activeUserId,
-      });
+      throw authUserNotFound(
+        "Active auth user does not exist in local storage",
+        {
+          userId: context.activeUserId,
+        },
+      );
     }
 
     return { userId: user.userId };
@@ -390,8 +436,13 @@ export function createCliAuthService(
 
   async function resolveWriteChannelSnapshot(args: {
     effectiveCredentialRef: { userId: string };
-  }): Promise<{ writeChannel: WriteChannelContext; selectedChannelId: string | null }> {
-    const selectedChannelId = await resolvedDeps.db.getSelectedChannelId(args.effectiveCredentialRef.userId);
+  }): Promise<{
+    writeChannel: WriteChannelContext;
+    selectedChannelId: string | null;
+  }> {
+    const selectedChannelId = await resolvedDeps.db.getSelectedChannelId(
+      args.effectiveCredentialRef.userId,
+    );
 
     let credentials: ResolvedCredentials | undefined;
     try {
@@ -474,7 +525,9 @@ export function createCliAuthService(
       };
     },
 
-    async loginDevice(args?: { onPending?: (data: DeviceAuthorizationStart) => void }) {
+    async loginDevice(args?: {
+      onPending?: (data: DeviceAuthorizationStart) => void;
+    }) {
       const start = await resolvedDeps.oauth.startDeviceAuthorization();
       args?.onPending?.(start);
 
@@ -516,16 +569,22 @@ export function createCliAuthService(
     async whoami() {
       const context = await resolvedDeps.storage.read();
       if (!context) {
-        throw authUserNotFound("No active auth context. Run `auth login` first.", {
-          reason: "active_user_missing",
-        });
+        throw authUserNotFound(
+          "No active auth context. Run `auth login` first.",
+          {
+            reason: "active_user_missing",
+          },
+        );
       }
 
       const user = await resolvedDeps.db.getUserSummary(context.activeUserId);
       if (!user) {
-        throw authUserNotFound("Active auth user does not exist in local storage", {
-          userId: context.activeUserId,
-        });
+        throw authUserNotFound(
+          "Active auth user does not exist in local storage",
+          {
+            userId: context.activeUserId,
+          },
+        );
       }
 
       const effectiveCredentialRef = { userId: user.userId };
@@ -557,10 +616,13 @@ export function createCliAuthService(
 
       const nextUser = await resolvedDeps.db.getUserSummary(parsed.data.userId);
       if (!nextUser) {
-        throw authUserNotFound("Requested auth user does not exist in local storage", {
-          userId: parsed.data.userId,
-          affectsRemoteOAuth: false,
-        });
+        throw authUserNotFound(
+          "Requested auth user does not exist in local storage",
+          {
+            userId: parsed.data.userId,
+            affectsRemoteOAuth: false,
+          },
+        );
       }
 
       const previousContext = await resolvedDeps.storage.read();
@@ -595,7 +657,9 @@ export function createCliAuthService(
 
       const selectedChannelId =
         "userId" in effectiveCredentialRef
-          ? await resolvedDeps.db.getSelectedChannelId(effectiveCredentialRef.userId)
+          ? await resolvedDeps.db.getSelectedChannelId(
+              effectiveCredentialRef.userId,
+            )
           : null;
 
       let credentials: ResolvedCredentials | undefined;
@@ -631,7 +695,10 @@ export function createCliAuthService(
       });
     },
 
-    async selectWriteChannel(args: { channelId: string; credentialRef?: CredentialRef }) {
+    async selectWriteChannel(args: {
+      channelId: string;
+      credentialRef?: CredentialRef;
+    }) {
       const parsed = selectWriteChannelInputSchema.safeParse({
         channelId: args.channelId,
         credentialRef: args.credentialRef,
@@ -656,7 +723,8 @@ export function createCliAuthService(
           details: [
             {
               path: "credentialRef.userId",
-              message: "Persisting selected channel requires a local user profile",
+              message:
+                "Persisting selected channel requires a local user profile",
               code: "custom",
             },
           ],
@@ -699,7 +767,9 @@ export function createCliAuthService(
       let targetUserId = args?.userId;
 
       if (!targetUserId) {
-        const resolved = await resolveEffectiveCredentialRef({ explicit: undefined });
+        const resolved = await resolveEffectiveCredentialRef({
+          explicit: undefined,
+        });
         if (!("userId" in resolved)) {
           throw authUserNotFound("No active user is available for revoke", {
             reason: "active_user_missing",
@@ -711,14 +781,19 @@ export function createCliAuthService(
 
       const tokenRow = await resolvedDeps.db.getUserTokens(targetUserId);
       if (!tokenRow) {
-        throw authUserNotFound("Cannot revoke non-existing user", { userId: targetUserId });
+        throw authUserNotFound("Cannot revoke non-existing user", {
+          userId: targetUserId,
+        });
       }
 
       const tokenForRevoke = tokenRow.refreshToken ?? tokenRow.accessToken;
       if (!tokenForRevoke) {
-        throw authUserNotFound("No OAuth token available to revoke for this user", {
-          userId: targetUserId,
-        });
+        throw authUserNotFound(
+          "No OAuth token available to revoke for this user",
+          {
+            userId: targetUserId,
+          },
+        );
       }
 
       await resolvedDeps.oauth.revokeToken(tokenForRevoke);

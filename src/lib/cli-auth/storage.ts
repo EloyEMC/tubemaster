@@ -1,5 +1,13 @@
 import { constants as fsConstants } from "node:fs";
-import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -21,7 +29,9 @@ export type ActiveAuthStorage = {
   clear(): Promise<void>;
 };
 
-export function createActiveAuthStorage(baseDir = process.cwd()): ActiveAuthStorage {
+export function createActiveAuthStorage(
+  baseDir = process.cwd(),
+): ActiveAuthStorage {
   const dataDir = path.join(baseDir, "data");
   const contextPath = path.join(dataDir, "auth-context.json");
 
@@ -63,7 +73,25 @@ export function createActiveAuthStorage(baseDir = process.cwd()): ActiveAuthStor
       await assertSafePermissions();
 
       const raw = await readFile(contextPath, "utf8");
-      const parsed = activeAuthContextSchema.safeParse(JSON.parse(raw));
+      let parsedJson: unknown;
+
+      try {
+        parsedJson = JSON.parse(raw);
+      } catch {
+        throw new DomainError({
+          code: "AUTH_CALLBACK_INVALID",
+          message: "Auth context file is invalid",
+          details: [
+            {
+              path: "",
+              message: "Auth context file must contain valid JSON",
+              code: "invalid_json",
+            },
+          ],
+        });
+      }
+
+      const parsed = activeAuthContextSchema.safeParse(parsedJson);
 
       if (!parsed.success) {
         throw new DomainError({
