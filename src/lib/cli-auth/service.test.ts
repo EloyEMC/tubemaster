@@ -150,7 +150,45 @@ test("resolveEffectiveCredentialRef falls back to active context", async () => {
   assert.deepEqual(resolved, { userId: "active-user" });
 });
 
-test("resolveEffectiveCredentialRef fails with AUTH_USER_NOT_FOUND when active user is missing", async () => {
+    test("resolveEffectiveCredentialRef propagates typed storage errors unchanged", async () => {
+      const storageError = new DomainError({
+        code: "AUTH_CALLBACK_INVALID",
+        message: "Could not read auth context file",
+        details: { operation: "read" },
+      });
+      const service = createCliAuthService({
+        storage: {
+          read: async () => {
+            throw storageError;
+          },
+          write: async () => {
+            throw new Error("unexpected write");
+          },
+          clear: async () => {
+            throw new Error("unexpected clear");
+          },
+        },
+        db: {
+          upsertUser: async () => undefined,
+          listUsers: async () => [],
+          getUserSummary: async () => null,
+          getUserTokens: async () => null,
+          clearUserTokens: async () => undefined,
+          getSelectedChannelId: async () => null,
+          setSelectedChannelId: async () => undefined,
+        },
+      });
+
+      await assert.rejects(
+        () => service.resolveEffectiveCredentialRef({}),
+        (error: unknown) => {
+          assert.equal(error, storageError);
+          return true;
+        },
+      );
+    });
+
+    test("resolveEffectiveCredentialRef fails with AUTH_USER_NOT_FOUND when active user is missing", async () => {
   const service = createCliAuthService({
     storage: makeStorageStub("active-user"),
     db: {

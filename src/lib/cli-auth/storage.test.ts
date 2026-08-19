@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import {
+    chmod,
+    mkdir,
+    mkdtemp,
+    readFile,
+    stat,
+    writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -74,4 +81,83 @@ test("active auth storage clear removes context", async () => {
 
     const context = await storage.read();
     assert.equal(context, null);
+});
+
+test("active auth storage wraps read IO failures without exposing paths", async () => {
+    const baseDir = await mkdtemp(path.join(tmpdir(), "auth-storage-read-io-"));
+    const dataDir = path.join(baseDir, "data");
+    const contextPath = path.join(dataDir, "auth-context.json");
+    await mkdir(dataDir);
+    await mkdir(contextPath);
+    await chmod(contextPath, 0o600);
+    const storage = createActiveAuthStorage(baseDir);
+
+    await assert.rejects(
+() => storage.read(),
+(error: unknown) => {
+assert(error instanceof DomainError);
+assert.equal(error.code, "AUTH_CALLBACK_INVALID");
+assert.equal(error.message, "Could not read auth context file");
+assert.deepEqual(error.details, { operation: "read" });
+assert.doesNotMatch(JSON.stringify(error), /auth-context|auth-storage-read-io/);
+return true;
+},
+    );
+});
+
+test("active auth storage wraps write IO failures without exposing paths", async () => {
+    const baseDir = await mkdtemp(path.join(tmpdir(), "auth-storage-write-io-"));
+    await writeFile(path.join(baseDir, "data"), "not-a-directory", "utf8");
+    const storage = createActiveAuthStorage(baseDir);
+
+    await assert.rejects(
+() => storage.write({ activeUserId: "user-1" }),
+(error: unknown) => {
+assert(error instanceof DomainError);
+assert.equal(error.code, "AUTH_CALLBACK_INVALID");
+assert.equal(error.message, "Could not write auth context file");
+assert.deepEqual(error.details, { operation: "write" });
+return true;
+},
+    );
+});
+
+test("active auth storage wraps rename failures without exposing paths", async () => {
+    const baseDir = await mkdtemp(path.join(tmpdir(), "auth-storage-rename-io-"));
+    const dataDir = path.join(baseDir, "data");
+    await mkdir(dataDir);
+    const contextPath = path.join(dataDir, "auth-context.json");
+    await mkdir(contextPath);
+    await chmod(contextPath, 0o700);
+    const storage = createActiveAuthStorage(baseDir);
+
+    await assert.rejects(
+() => storage.write({ activeUserId: "user-1" }),
+(error: unknown) => {
+assert(error instanceof DomainError);
+assert.equal(error.code, "AUTH_CALLBACK_INVALID");
+assert.equal(error.message, "Could not persist auth context file");
+assert.deepEqual(error.details, { operation: "rename" });
+return true;
+},
+    );
+});
+
+test("active auth storage wraps clear permission and IO failures", async () => {
+    const baseDir = await mkdtemp(path.join(tmpdir(), "auth-storage-clear-io-"));
+    const dataDir = path.join(baseDir, "data");
+    await mkdir(dataDir);
+    await mkdir(path.join(dataDir, "auth-context.json"));
+    const storage = createActiveAuthStorage(baseDir);
+
+    await assert.rejects(
+() => storage.clear(),
+(error: unknown) => {
+assert(error instanceof DomainError);
+assert.equal(error.code, "AUTH_CALLBACK_INVALID");
+assert.equal(error.message, "Could not clear auth context file");
+assert.deepEqual(error.details, { operation: "clear" });
+return true;
+},
+    );
 });
