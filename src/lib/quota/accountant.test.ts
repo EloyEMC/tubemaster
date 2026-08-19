@@ -292,3 +292,9 @@ test("quota cost table is explicit for playlist and transcript operations", () =
     [1, 1, 50, 1, 50, 50, 50, 1, 50, 50, 50, 200],
   );
 });
+
+test('"reports.query" quota cost exists and is a valid QuotaOperation', () => {
+  assert.equal(YOUTUBE_QUOTA_COSTS["reports.query"], 1);
+  const validOps: QuotaOperation[] = ["reports.query"];
+  assert.ok(validOps.every((op) => op in YOUTUBE_QUOTA_COSTS));
+});
