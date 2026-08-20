@@ -211,7 +211,18 @@ const playlistUpdateToolInputSchema = z
     },
   );
 
+const playlistAddVideosToolInputSchema = playlistAddVideosInputSchema
+  .extend({
+    expectedChannelId: z.string().min(1),
+    confirmed: z.literal(true),
+  })
+  .partial({ credentialRef: true });
+
 const playlistDeleteToolInputSchema = playlistDeleteInputSchema
+  .extend({ confirmed: z.literal(true) })
+  .partial({ credentialRef: true });
+
+const playlistRemoveVideosToolInputSchema = playlistRemoveVideosInputSchema
   .extend({ confirmed: z.literal(true) })
   .partial({ credentialRef: true });
 
@@ -522,19 +533,19 @@ export function createMcpToolHandlers(
     },
 
     async playlistAddVideos(input: unknown): Promise<ToolResponse> {
-      const parsedInput = playlistAddVideosInputSchema
-        .partial({ credentialRef: true })
-        .safeParse(input);
+      const parsedInput = playlistAddVideosToolInputSchema.safeParse(input);
       if (!parsedInput.success) {
         return mapValidationErrorResult(parsedInput.error);
       }
 
       try {
+        const { confirmed, ...addInput } = parsedInput.data;
+        void confirmed;
         const credentialRef = await resolveCredentialRef(
-          parsedInput.data.credentialRef,
+          addInput.credentialRef,
         );
         const result = await core.addVideosToPlaylist({
-          ...parsedInput.data,
+          ...addInput,
           credentialRef,
         });
         return toolSuccessResult(result as Record<string, unknown>);
@@ -544,19 +555,19 @@ export function createMcpToolHandlers(
     },
 
     async playlistRemoveVideos(input: unknown): Promise<ToolResponse> {
-      const parsedInput = playlistRemoveVideosInputSchema
-        .partial({ credentialRef: true })
-        .safeParse(input);
+      const parsedInput = playlistRemoveVideosToolInputSchema.safeParse(input);
       if (!parsedInput.success) {
         return mapValidationErrorResult(parsedInput.error);
       }
 
       try {
+        const { confirmed, ...removeInput } = parsedInput.data;
+        void confirmed;
         const credentialRef = await resolveCredentialRef(
-          parsedInput.data.credentialRef,
+          removeInput.credentialRef,
         );
         const result = await core.removeVideosFromPlaylist({
-          ...parsedInput.data,
+          ...removeInput,
           credentialRef,
         });
         return toolSuccessResult(result as Record<string, unknown>);
@@ -705,9 +716,7 @@ export function createMcpServer(
     {
       description:
         "Add one or more videos to a playlist and return stable partial results with attempted/added/failures.",
-      inputSchema: playlistAddVideosInputSchema.partial({
-        credentialRef: true,
-      }),
+      inputSchema: playlistAddVideosToolInputSchema,
     },
     (args) => handlers.playlistAddVideos(args),
   );
@@ -737,9 +746,7 @@ export function createMcpServer(
     {
       description:
         "Remove one or more videos from a playlist and return stable partial results with requested/removed/failures.",
-      inputSchema: playlistRemoveVideosInputSchema.partial({
-        credentialRef: true,
-      }),
+      inputSchema: playlistRemoveVideosToolInputSchema,
     },
     (args) => handlers.playlistRemoveVideos(args),
   );

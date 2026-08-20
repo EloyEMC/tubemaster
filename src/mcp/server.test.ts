@@ -1098,15 +1098,207 @@ test("MCP playlist_* tools reject invalid input with structured validation error
   }
 });
 
+test("MCP playlist_add_videos requires explicit confirmation before auth/core", async () => {
+  let authCalled = false;
+  let coreCalled = false;
+  const core = makeCoreStub();
+  core.addVideosToPlaylist = async () => {
+    coreCalled = true;
+    return { playlistId: "p1", attempted: 1, added: 1, failures: [] };
+  };
+
+  const handlers = createMcpToolHandlers(core, {
+    ...makeAuthStub(),
+    resolveEffectiveCredentialRef: async () => {
+      authCalled = true;
+      return { userId: "active-user" };
+    },
+  });
+
+  for (const input of [
+    {
+      playlistId: "p1",
+      expectedChannelId: "UC_ACTIVE",
+      videoIds: ["v1"],
+    },
+    {
+      playlistId: "p1",
+      expectedChannelId: "UC_ACTIVE",
+      videoIds: ["v1"],
+      confirmed: false,
+    },
+  ]) {
+    const result = await handlers.playlistAddVideos(input);
+    assert.equal(result.isError, true);
+    const payload = JSON.parse(result.content[0]?.text ?? "{}");
+    assert.equal(payload.error.code, "validation_failed");
+  }
+
+  assert.equal(authCalled, false);
+  assert.equal(coreCalled, false);
+});
+
+test("MCP playlist_add_videos rejects missing expectedChannelId before authorization", async () => {
+  let called = false;
+  const core = makeCoreStub();
+  core.addVideosToPlaylist = async () => {
+    called = true;
+    return { playlistId: "p1", attempted: 1, added: 1, failures: [] };
+  };
+
+  const handlers = createMcpToolHandlers(core, makeAuthStub());
+  const result = await handlers.playlistAddVideos({
+    playlistId: "p1",
+    confirmed: true,
+    videoIds: ["v1"],
+  });
+
+  assert.equal(result.isError, true);
+  assert.equal(called, false);
+  const payload = JSON.parse(result.content[0]?.text ?? "{}");
+  assert.equal(payload.error.code, "validation_failed");
+  assert.equal(
+    payload.error.details.some((detail: { path: string }) =>
+      detail.path.includes("expectedChannelId"),
+    ),
+    true,
+  );
+});
+
+test("MCP playlist_remove_videos requires explicit confirmation before auth/core", async () => {
+  let authCalled = false;
+  let coreCalled = false;
+  const core = makeCoreStub();
+  core.removeVideosFromPlaylist = async () => {
+    coreCalled = true;
+    return { playlistId: "p1", requested: 1, removed: 1, failures: [] };
+  };
+
+  const handlers = createMcpToolHandlers(core, {
+    ...makeAuthStub(),
+    resolveEffectiveCredentialRef: async () => {
+      authCalled = true;
+      return { userId: "active-user" };
+    },
+  });
+
+  for (const input of [
+    {
+      playlistId: "p1",
+      expectedChannelId: "UC_ACTIVE",
+      videoIds: ["v1"],
+    },
+    {
+      playlistId: "p1",
+      expectedChannelId: "UC_ACTIVE",
+      videoIds: ["v1"],
+      confirmed: false,
+    },
+  ]) {
+    const result = await handlers.playlistRemoveVideos(input);
+    assert.equal(result.isError, true);
+    const payload = JSON.parse(result.content[0]?.text ?? "{}");
+    assert.equal(payload.error.code, "validation_failed");
+  }
+
+  assert.equal(authCalled, false);
+  assert.equal(coreCalled, false);
+});
+
+test("MCP playlist_remove_videos rejects missing expectedChannelId before authorization", async () => {
+  let called = false;
+  const core = makeCoreStub();
+  core.removeVideosFromPlaylist = async () => {
+    called = true;
+    return { playlistId: "p1", requested: 1, removed: 1, failures: [] };
+  };
+
+  const handlers = createMcpToolHandlers(core, makeAuthStub());
+  const result = await handlers.playlistRemoveVideos({
+    playlistId: "p1",
+    confirmed: true,
+    videoIds: ["v1"],
+  });
+
+  assert.equal(result.isError, true);
+  assert.equal(called, false);
+  const payload = JSON.parse(result.content[0]?.text ?? "{}");
+  assert.equal(payload.error.code, "validation_failed");
+  assert.equal(
+    payload.error.details.some((detail: { path: string }) =>
+      detail.path.includes("expectedChannelId"),
+    ),
+    true,
+  );
+});
+
+test("MCP playlist_remove_videos preserves sanitized provider failures", async () => {
+  const core = makeCoreStub();
+  core.removeVideosFromPlaylist = async () => ({
+    playlistId: "p1",
+    requested: 1,
+    removed: 0,
+    failures: [{ videoId: "v1", reason: "forbidden" as const }],
+  });
+
+  const handlers = createMcpToolHandlers(core, makeAuthStub());
+  const result = await handlers.playlistRemoveVideos({
+    playlistId: "p1",
+    expectedChannelId: "UC_ACTIVE",
+    confirmed: true,
+    videoIds: ["v1"],
+  });
+
+  assert.equal(result.isError, undefined);
+  assert.deepEqual(result.structuredContent, {
+    playlistId: "p1",
+    requested: 1,
+    removed: 0,
+    failures: [{ videoId: "v1", reason: "forbidden" }],
+  });
+  assert.equal(result.content[0]?.text.includes("Bearer"), false);
+});
+
+test("MCP playlist_add_videos preserves sanitized provider failures", async () => {
+  const core = makeCoreStub();
+  core.addVideosToPlaylist = async () => ({
+    playlistId: "p1",
+    attempted: 1,
+    added: 0,
+    failures: [{ videoId: "v1", reason: "unknown" as const }],
+  });
+
+  const handlers = createMcpToolHandlers(core, makeAuthStub());
+  const result = await handlers.playlistAddVideos({
+    playlistId: "p1",
+    expectedChannelId: "UC_ACTIVE",
+    videoIds: ["v1"],
+    confirmed: true,
+  });
+
+  assert.equal(result.isError, undefined);
+  assert.deepEqual(result.structuredContent, {
+    playlistId: "p1",
+    attempted: 1,
+    added: 0,
+    failures: [{ videoId: "v1", reason: "unknown" }],
+  });
+  assert.equal(result.content[0]?.text.includes("Bearer"), false);
+});
+
 test("MCP playlist add/remove tools return stable partial contracts", async () => {
   const handlers = createMcpToolHandlers(makeCoreStub(), makeAuthStub());
 
   const addResult = await handlers.playlistAddVideos({
     playlistId: "p1",
+    expectedChannelId: "UC_ACTIVE",
     videoIds: ["v1", "v2"],
+    confirmed: true,
   });
   const removeResult = await handlers.playlistRemoveVideos({
     playlistId: "p1",
+    expectedChannelId: "UC_ACTIVE",
+    confirmed: true,
     videoIds: ["v1", "v2"],
   });
 
