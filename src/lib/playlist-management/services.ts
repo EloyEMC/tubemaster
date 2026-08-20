@@ -143,11 +143,11 @@ function safeAccount(
   channelId?: string,
 ) {
   try {
-        accountant?.record({
-          operationId,
-          operation,
-          ...(channelId ? { channelId } : {}),
-        });
+    accountant?.record({
+      operationId,
+      operation,
+      ...(channelId ? { channelId } : {}),
+    });
   } catch {
     // Accounting is observational and cannot change the operation outcome.
   }
@@ -167,10 +167,7 @@ function classifyYoutubeMutationError(
   context: "add" | "remove",
 ): { reason: PlaylistMutationFailureReason; message?: string } {
   if (error instanceof DomainError) {
-    return {
-      reason: "unknown",
-      message: error.message,
-    };
+    return { reason: "unknown" };
   }
 
   const maybeResponse =
@@ -198,37 +195,22 @@ function classifyYoutubeMutationError(
       normalizedReason === "duplicate" ||
       normalizedReason === "playlistcontainsduplicatevideos")
   ) {
-    return {
-      reason: "already-present",
-      message: error instanceof Error ? error.message : undefined,
-    };
+    return { reason: "already-present" };
   }
 
   if (status === 403) {
-    return {
-      reason: "forbidden",
-      message: error instanceof Error ? error.message : undefined,
-    };
+    return { reason: "forbidden" };
   }
 
   if (context === "remove" && status === 404) {
-    return {
-      reason: "not-found-in-playlist",
-      message: error instanceof Error ? error.message : undefined,
-    };
+    return { reason: "not-found-in-playlist" };
   }
 
   if (status && status >= 400) {
-    return {
-      reason: "api-error",
-      message: error instanceof Error ? error.message : undefined,
-    };
+    return { reason: "api-error" };
   }
 
-  return {
-    reason: "unknown",
-    message: error instanceof Error ? error.message : undefined,
-  };
+  return { reason: "unknown" };
 }
 
 export function createPlaylistManagementServices(deps: ServiceDependencies) {
@@ -308,11 +290,11 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
         });
 
         safeAccount(
-              accountant,
-              operationId,
-              "playlists.insert",
-              guardrail.expectedChannelId,
-            );
+          accountant,
+          operationId,
+          "playlists.insert",
+          guardrail.expectedChannelId,
+        );
         const playlist = await deps.youtubeApi.createPlaylist({
           credentials,
           title: parsedInput.title.trim(),
@@ -377,7 +359,7 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
         });
 
         const accountant = resolveQuotaAccountant(deps, credentials);
-const currentPlaylist = await deps.youtubeApi.getPlaylistForUpdate({
+        const currentPlaylist = await deps.youtubeApi.getPlaylistForUpdate({
           credentials,
           playlistId: parsedInput.playlistId,
           operationId,
@@ -405,11 +387,11 @@ const currentPlaylist = await deps.youtubeApi.getPlaylistForUpdate({
         }
 
         safeAccount(
-              accountant,
-              operationId,
-              "playlists.update",
-              guardrail.expectedChannelId,
-            );
+          accountant,
+          operationId,
+          "playlists.update",
+          guardrail.expectedChannelId,
+        );
         const playlist = await deps.youtubeApi.updatePlaylist({
           credentials,
           playlistId: parsedInput.playlistId,
@@ -479,7 +461,7 @@ const currentPlaylist = await deps.youtubeApi.getPlaylistForUpdate({
         });
 
         const accountant = resolveQuotaAccountant(deps, credentials);
-const playlist = await deps.youtubeApi.getPlaylistForDelete({
+        const playlist = await deps.youtubeApi.getPlaylistForDelete({
           credentials,
           playlistId: parsedInput.playlistId,
           operationId,
@@ -507,11 +489,11 @@ const playlist = await deps.youtubeApi.getPlaylistForDelete({
         }
 
         safeAccount(
-              accountant,
-              operationId,
-              "playlists.delete",
-              guardrail.expectedChannelId,
-            );
+          accountant,
+          operationId,
+          "playlists.delete",
+          guardrail.expectedChannelId,
+        );
         await deps.youtubeApi.deletePlaylist({
           credentials,
           playlistId: parsedInput.playlistId,
@@ -557,6 +539,7 @@ const playlist = await deps.youtubeApi.getPlaylistForDelete({
       const traceContext = {
         operationId,
         playlistId: parsedInput.playlistId,
+        expectedChannelId: parsedInput.expectedChannelId,
       };
       safeLog(deps.logger, "info", {
         event: "playlist_management.add.started",
@@ -568,6 +551,11 @@ const playlist = await deps.youtubeApi.getPlaylistForDelete({
           credentialRef: parsedInput.credentialRef,
           requiredScopes: [YOUTUBE_WRITE_SCOPE],
         });
+        const guardrail = await deps.writeContext.assertWriteChannel({
+          credentialRef: parsedInput.credentialRef,
+          credentials,
+          expectedChannelId: parsedInput.expectedChannelId,
+        });
         const accountant = resolveQuotaAccountant(deps, credentials);
 
         let added = 0;
@@ -575,7 +563,12 @@ const playlist = await deps.youtubeApi.getPlaylistForDelete({
 
         for (const videoId of parsedInput.videoIds) {
           try {
-            safeAccount(accountant, operationId, "playlistItems.insert");
+            safeAccount(
+              accountant,
+              operationId,
+              "playlistItems.insert",
+              guardrail.expectedChannelId,
+            );
             await deps.youtubeApi.addVideoToPlaylist({
               credentials,
               playlistId: parsedInput.playlistId,
@@ -602,6 +595,13 @@ const playlist = await deps.youtubeApi.getPlaylistForDelete({
           },
           "playlist add videos output",
         );
+        if (guardrail.shouldPersistSelection && guardrail.userId) {
+          await deps.channelSelectionStore.setSelectedChannelId(
+            guardrail.userId,
+            guardrail.expectedChannelId,
+          );
+        }
+
         safeLog(deps.logger, "info", {
           event: "playlist_management.add.success",
           context: {
@@ -634,6 +634,7 @@ const playlist = await deps.youtubeApi.getPlaylistForDelete({
       const traceContext = {
         operationId,
         playlistId: parsedInput.playlistId,
+        expectedChannelId: parsedInput.expectedChannelId,
       };
       safeLog(deps.logger, "info", {
         event: "playlist_management.remove.started",
@@ -645,6 +646,11 @@ const playlist = await deps.youtubeApi.getPlaylistForDelete({
           credentialRef: parsedInput.credentialRef,
           requiredScopes: [YOUTUBE_WRITE_SCOPE],
         });
+        const guardrail = await deps.writeContext.assertWriteChannel({
+          credentialRef: parsedInput.credentialRef,
+          credentials,
+          expectedChannelId: parsedInput.expectedChannelId,
+        });
 
         const accountant = resolveQuotaAccountant(deps, credentials);
 
@@ -654,6 +660,7 @@ const playlist = await deps.youtubeApi.getPlaylistForDelete({
             playlistId: parsedInput.playlistId,
             operationId,
             quotaAccountant: accountant,
+            channelId: guardrail.expectedChannelId,
           },
         );
 
@@ -674,7 +681,12 @@ const playlist = await deps.youtubeApi.getPlaylistForDelete({
           }
 
           try {
-            safeAccount(accountant, operationId, "playlistItems.delete");
+            safeAccount(
+              accountant,
+              operationId,
+              "playlistItems.delete",
+              guardrail.expectedChannelId,
+            );
             await deps.youtubeApi.deletePlaylistItem({
               credentials,
               playlistItemId,
@@ -685,7 +697,6 @@ const playlist = await deps.youtubeApi.getPlaylistForDelete({
             failures.push({
               videoId,
               reason: classified.reason,
-              ...(classified.message ? { message: classified.message } : {}),
             });
           }
         }

@@ -8,6 +8,7 @@ import {
   playlistCreateInputSchema,
   playlistDeleteInputSchema,
   playlistDeleteOutputSchema,
+  playlistRemoveVideosInputSchema,
   playlistRemoveVideosOutputSchema,
   playlistUpdateInputSchema,
   playlistUpdateOutputSchema,
@@ -23,7 +24,7 @@ test("playlist add schema rejects invalid payload with typed validation error", 
           playlistId: "playlist-1",
           videoIds: [],
         },
-        "playlist add videos input"
+        "playlist add videos input",
       );
     },
     (error: unknown) => {
@@ -32,7 +33,7 @@ test("playlist add schema rejects invalid payload with typed validation error", 
       assert.match(error.message, /Invalid playlist add videos input/);
       assert.ok(Array.isArray(error.details));
       return true;
-    }
+    },
   );
 });
 
@@ -51,7 +52,7 @@ test("playlist add output keeps stable shape", () => {
         },
       ],
     },
-    "playlist add videos output"
+    "playlist add videos output",
   );
 
   assert.deepEqual(result, {
@@ -68,6 +69,31 @@ test("playlist add output keeps stable shape", () => {
   });
 });
 
+test("playlist remove schema requires expectedChannelId", () => {
+  assert.throws(
+    () =>
+      parseWithSchema(
+        playlistRemoveVideosInputSchema,
+        {
+          credentialRef: { userId: "user-1" },
+          playlistId: "playlist-1",
+          videoIds: ["v1"],
+        },
+        "playlist remove videos input",
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof DomainError);
+      assert.equal(error.code, "validation_failed");
+      assert.ok(
+        (error.details as Array<{ path: string }>).some((detail) =>
+          detail.path.includes("expectedChannelId"),
+        ),
+      );
+      return true;
+    },
+  );
+});
+
 test("playlist remove output keeps stable shape", () => {
   const result = parseWithSchema(
     playlistRemoveVideosOutputSchema,
@@ -77,7 +103,7 @@ test("playlist remove output keeps stable shape", () => {
       removed: 1,
       failures: [{ videoId: "v2", reason: "not-found-in-playlist" }],
     },
-    "playlist remove videos output"
+    "playlist remove videos output",
   );
 
   assert.deepEqual(result, {
@@ -96,7 +122,7 @@ test("playlist delete input/output keep stable contracts", () => {
       playlistId: "playlist-1",
       expectedChannelId: "UC_ACTIVE",
     },
-    "playlist delete input"
+    "playlist delete input",
   );
 
   assert.deepEqual(parsedInput, {
@@ -111,7 +137,7 @@ test("playlist delete input/output keep stable contracts", () => {
       deleted: true,
       playlistId: "playlist-1",
     },
-    "playlist delete output"
+    "playlist delete output",
   );
 
   assert.deepEqual(parsedOutput, {
@@ -130,7 +156,7 @@ test("playlist delete schema rejects invalid payload with actionable details", (
           playlistId: "",
           expectedChannelId: "",
         },
-        "playlist delete input"
+        "playlist delete input",
       );
     },
     (error: unknown) => {
@@ -140,10 +166,16 @@ test("playlist delete schema rejects invalid payload with actionable details", (
 
       const details = error.details as Array<{ path: string }>;
       assert.equal(Array.isArray(details), true);
-      assert.equal(details.some((detail) => detail.path === "playlistId"), true);
-      assert.equal(details.some((detail) => detail.path === "expectedChannelId"), true);
+      assert.equal(
+        details.some((detail) => detail.path === "playlistId"),
+        true,
+      );
+      assert.equal(
+        details.some((detail) => detail.path === "expectedChannelId"),
+        true,
+      );
       return true;
-    }
+    },
   );
 });
 
@@ -156,7 +188,7 @@ test("playlist create schema accepts optional description", () => {
       description: "Summer videos",
       expectedChannelId: "UC_ACTIVE",
     },
-    "playlist create input"
+    "playlist create input",
   );
 
   assert.deepEqual(parsedInput, {
@@ -178,7 +210,7 @@ test("playlist update schema rejects empty patch with actionable message", () =>
           playlistId: "playlist-1",
           expectedChannelId: "UC_ACTIVE",
         },
-        "playlist update input"
+        "playlist update input",
       );
     },
     (error: unknown) => {
@@ -188,12 +220,12 @@ test("playlist update schema rejects empty patch with actionable message", () =>
       const details = error.details as Array<{ message: string }>;
       assert.equal(
         details.some((detail) =>
-          detail.message.includes("At least one mutable field is required")
+          detail.message.includes("At least one mutable field is required"),
         ),
-        true
+        true,
       );
       return true;
-    }
+    },
   );
 });
 
@@ -208,7 +240,7 @@ test("playlist update output keeps full metadata shape", () => {
         privacyStatus: "unlisted",
       },
     },
-    "playlist update output"
+    "playlist update output",
   );
 
   assert.deepEqual(parsedOutput, {

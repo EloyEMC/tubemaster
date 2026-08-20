@@ -158,11 +158,13 @@ test("playlist operations emit correlated lifecycle events without leaking unsaf
   await services.addVideosToPlaylist({
     credentialRef: { userId: "user-1" },
     playlistId: "p1",
+    expectedChannelId: "UC_ACTIVE",
     videoIds: ["v1"],
   });
   await services.removeVideosFromPlaylist({
     credentialRef: { userId: "user-1" },
     playlistId: "p1",
+    expectedChannelId: "UC_ACTIVE",
     videoIds: ["v1"],
   });
 
@@ -245,11 +247,13 @@ test("playlist operations account attempted requests under one operation", async
   await services.addVideosToPlaylist({
     credentialRef: { userId: "user-1" },
     playlistId: "p1",
+    expectedChannelId: "UC_ACTIVE",
     videoIds: ["v1", "v2"],
   });
   await services.removeVideosFromPlaylist({
     credentialRef: { userId: "user-1" },
     playlistId: "p1",
+    expectedChannelId: "UC_ACTIVE",
     videoIds: ["v1"],
   });
 
@@ -808,6 +812,7 @@ test("addVideosToPlaylist returns stable partial result with per-item failures",
   const result = await services.addVideosToPlaylist({
     credentialRef: { userId: "user-1" },
     playlistId: "playlist-1",
+    expectedChannelId: "UC_ACTIVE",
     videoIds: ["v1", "v2", "v3"],
   });
 
@@ -822,6 +827,124 @@ test("addVideosToPlaylist returns stable partial result with per-item failures",
       },
     ],
   });
+});
+
+test("addVideosToPlaylist blocks channel mismatch before provider mutation", async () => {
+  let addCalls = 0;
+  const services = createPlaylistManagementServices({
+    authResolver: {
+      resolve: async (args) => ({
+        credentialRef: args.credentialRef as { userId: string },
+        accessToken: "access",
+        refreshToken: "refresh",
+        tokenExpiry: undefined,
+        scopeSet: new Set(args.requiredScopes),
+      }),
+    },
+    youtubeApi: {
+      listPlaylists: async () => [],
+      createPlaylist: async () => ({
+        id: "p-created",
+        title: "Created",
+        description: "",
+        privacyStatus: "private",
+      }),
+      getPlaylistForUpdate: async () => null,
+      updatePlaylist: async () => ({
+        id: "p-updated",
+        title: "Updated",
+        description: "",
+        privacyStatus: "private",
+      }),
+      getPlaylistForDelete: async () => null,
+      deletePlaylist: async () => undefined,
+      addVideoToPlaylist: async () => {
+        addCalls += 1;
+      },
+      listPlaylistItemIdsByVideo: async () => new Map(),
+      deletePlaylistItem: async () => undefined,
+    },
+    writeContext: {
+      assertWriteChannel: async () => {
+        throw new DomainError({
+          code: "WRITE_CHANNEL_MISMATCH",
+          message: "expectedChannelId does not match the active write channel",
+          details: {
+            expectedChannelId: "UC_EXPECTED",
+            activeWriteChannelId: "UC_ACTIVE",
+          },
+        });
+      },
+    },
+    channelSelectionStore: { setSelectedChannelId: async () => undefined },
+  });
+
+  await assert.rejects(
+    () =>
+      services.addVideosToPlaylist({
+        credentialRef: { userId: "user-1" },
+        playlistId: "playlist-1",
+        expectedChannelId: "UC_EXPECTED",
+        videoIds: ["v1"],
+      }),
+    (error: unknown) =>
+      error instanceof DomainError && error.code === "WRITE_CHANNEL_MISMATCH",
+  );
+  assert.equal(addCalls, 0);
+});
+
+test("addVideosToPlaylist redacts provider messages from partial failures", async () => {
+  const services = createPlaylistManagementServices({
+    authResolver: {
+      resolve: async (args) => ({
+        credentialRef: args.credentialRef as { userId: string },
+        accessToken: "access",
+        refreshToken: "refresh",
+        tokenExpiry: undefined,
+        scopeSet: new Set(args.requiredScopes),
+      }),
+    },
+    youtubeApi: {
+      listPlaylists: async () => [],
+      createPlaylist: async () => ({
+        id: "p-created",
+        title: "Created",
+        description: "",
+        privacyStatus: "private",
+      }),
+      getPlaylistForUpdate: async () => null,
+      updatePlaylist: async () => ({
+        id: "p-updated",
+        title: "Updated",
+        description: "",
+        privacyStatus: "private",
+      }),
+      getPlaylistForDelete: async () => null,
+      deletePlaylist: async () => undefined,
+      addVideoToPlaylist: async () => {
+        throw new Error("Bearer super-secret-token provider payload");
+      },
+      listPlaylistItemIdsByVideo: async () => new Map(),
+      deletePlaylistItem: async () => undefined,
+    },
+    writeContext: {
+      assertWriteChannel: async () => ({
+        expectedChannelId: "UC_ACTIVE",
+        activeWriteChannel: { id: "UC_ACTIVE", title: "Active" },
+        shouldPersistSelection: false,
+        userId: null,
+      }),
+    },
+    channelSelectionStore: { setSelectedChannelId: async () => undefined },
+  });
+
+  const result = await services.addVideosToPlaylist({
+    credentialRef: { userId: "user-1" },
+    playlistId: "playlist-1",
+    expectedChannelId: "UC_ACTIVE",
+    videoIds: ["v1"],
+  });
+  assert.deepEqual(result.failures, [{ videoId: "v1", reason: "unknown" }]);
 });
 
 test("removeVideosFromPlaylist preserves order and returns not-found failures", async () => {
@@ -886,6 +1009,7 @@ test("removeVideosFromPlaylist preserves order and returns not-found failures", 
   const result = await services.removeVideosFromPlaylist({
     credentialRef: { userId: "user-1" },
     playlistId: "playlist-1",
+    expectedChannelId: "UC_ACTIVE",
     videoIds: ["v1", "v2", "v3", "v1"],
   });
 

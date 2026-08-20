@@ -69,9 +69,10 @@ export const playlistUpdateInputSchema = z
       payload.description !== undefined ||
       payload.privacyStatus !== undefined,
     {
-      message: "At least one mutable field is required: title, description or privacyStatus",
+      message:
+        "At least one mutable field is required: title, description or privacyStatus",
       path: ["title"],
-    }
+    },
   );
 
 export const playlistUpdateOutputSchema = z
@@ -99,6 +100,7 @@ export const playlistAddVideosInputSchema = z
   .object({
     credentialRef: credentialRefSchema,
     playlistId: z.string().min(1),
+    expectedChannelId: z.string().min(1).optional(),
     videoIds: z.array(z.string().min(1)).min(1),
   })
   .strict();
@@ -116,6 +118,7 @@ export const playlistRemoveVideosInputSchema = z
   .object({
     credentialRef: credentialRefSchema,
     playlistId: z.string().min(1),
+    expectedChannelId: z.string().min(1),
     videoIds: z.array(z.string().min(1)).min(1),
   })
   .strict();
@@ -137,10 +140,18 @@ export type PlaylistUpdateInput = z.infer<typeof playlistUpdateInputSchema>;
 export type PlaylistUpdateOutput = z.infer<typeof playlistUpdateOutputSchema>;
 export type PlaylistDeleteInput = z.infer<typeof playlistDeleteInputSchema>;
 export type PlaylistDeleteOutput = z.infer<typeof playlistDeleteOutputSchema>;
-export type PlaylistAddVideosInput = z.infer<typeof playlistAddVideosInputSchema>;
-export type PlaylistAddVideosOutput = z.infer<typeof playlistAddVideosOutputSchema>;
-export type PlaylistRemoveVideosInput = z.infer<typeof playlistRemoveVideosInputSchema>;
-export type PlaylistRemoveVideosOutput = z.infer<typeof playlistRemoveVideosOutputSchema>;
+export type PlaylistAddVideosInput = z.infer<
+  typeof playlistAddVideosInputSchema
+>;
+export type PlaylistAddVideosOutput = z.infer<
+  typeof playlistAddVideosOutputSchema
+>;
+export type PlaylistRemoveVideosInput = z.infer<
+  typeof playlistRemoveVideosInputSchema
+>;
+export type PlaylistRemoveVideosOutput = z.infer<
+  typeof playlistRemoveVideosOutputSchema
+>;
 
 export function formatZodError(error: ZodError) {
   return error.issues.map((issue) => ({
@@ -153,7 +164,7 @@ export function formatZodError(error: ZodError) {
 export function parseWithSchema<T>(
   schema: z.ZodType<T>,
   payload: unknown,
-  context: string
+  context: string,
 ): T {
   const parsed = schema.safeParse(payload);
   if (!parsed.success) {
