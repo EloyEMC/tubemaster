@@ -1032,6 +1032,7 @@ test("MCP playlist_delete forwards confirmed input and returns success", async (
   const result = await handlers.playlistDelete({
     playlistId: "p-delete",
     expectedChannelId: "UC_ACTIVE",
+    confirmed: true,
   });
 
   assert.equal(result.isError, undefined);
@@ -1039,6 +1040,7 @@ test("MCP playlist_delete forwards confirmed input and returns success", async (
     credentialRef: { userId: "active-user" },
     playlistId: "p-delete",
     expectedChannelId: "UC_ACTIVE",
+    confirmed: true,
   });
 
   assert.deepEqual(result.structuredContent, {
