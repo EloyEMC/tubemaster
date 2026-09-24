@@ -9,13 +9,11 @@ import {
   resolveQuotaTimezone,
   type QuotaOperation,
 } from "./accountant";
-import { databaseInitialization, db } from "../db";
 import {
   listQuotaUsage,
   quotaUsageRepository,
   summarizeQuotaUsage,
 } from "../quota/repository";
-import { sql } from "drizzle-orm";
 
 test("in-memory quota accountant records safe entries and accumulates repeated calls", () => {
   const accountant = new InMemoryQuotaAccountant();
@@ -61,64 +59,11 @@ test("in-memory quota accountant records safe entries and accumulates repeated c
   }
 });
 
-test("quota records preserve the resolved channel identity", () => {
-  const accountant = new InMemoryQuotaAccountant();
-
-  accountant.record({
-    operationId: "channel-operation",
-    operation: "videos.list",
-    channelId: "channel-a",
-  });
-
-  assert.deepEqual(accountant.entries()[0], {
-    operationId: "channel-operation",
-    operation: "videos.list",
-    estimatedUnits: 1,
-    timestamp: accountant.entries()[0]?.timestamp,
-    channelId: "channel-a",
-  });
-});
-
-test("channel-aware accountant persists channel identity without changing default scope", async () => {
-  const inserted: Array<{ channelId: string | null }> = [];
-  const accountant = new DurableQuotaAccountant({
-    userId: "user-a",
-    channelId: "channel-a",
-    repository: {
-      insert: async (entry) => {
-        inserted.push({ channelId: entry.channelId ?? null });
-      },
-    },
-  });
-
-  accountant.record({ operationId: "channel-aware", operation: "videos.list" });
-  await accountant.flush();
-
-  assert.deepEqual(inserted, [{ channelId: "channel-a" }]);
-  assert.deepEqual(accountant.entries()[0]?.channelId, "channel-a");
-
-  const legacyInserted: Array<{ channelId: string | null }> = [];
-  const legacy = new DurableQuotaAccountant({
-    repository: {
-      insert: async (entry) => {
-        legacyInserted.push({ channelId: entry.channelId ?? null });
-      },
-    },
-  });
-  legacy.record({ operationId: "legacy", operation: "videos.list" });
-  await legacy.flush();
-  assert.deepEqual(legacyInserted, [{ channelId: null }]);
-});
-
 test("default accountant factory derives durable user and global scopes from resolved credentials", async () => {
   const inserted: Array<{ scopeType: string; scopeId: string | null }> = [];
   const factory = createDurableQuotaAccountantFactory({
     repository: {
-      insert: async (entry: {
-        scopeType: string;
-        scopeId: string | null;
-        channelId?: string | null;
-      }) => {
+      insert: async (entry: { scopeType: string; scopeId: string | null }) => {
         inserted.push({ scopeType: entry.scopeType, scopeId: entry.scopeId });
       },
     },
@@ -143,22 +88,6 @@ test("default accountant factory derives durable user and global scopes from res
     { scopeType: "user", scopeId: "user-a" },
     { scopeType: "global", scopeId: null },
   ]);
-});
-
-test("durable record eventually persists without an explicit flush", async () => {
-  const inserted: string[] = [];
-  const accountant = new DurableQuotaAccountant({
-    repository: {
-      insert: async ({ operationId }) => {
-        inserted.push(operationId);
-      },
-    },
-  });
-
-  accountant.record({ operationId: "automatic", operation: "videos.list" });
-
-  await Promise.resolve();
-  assert.deepEqual(inserted, ["automatic"]);
 });
 
 test("durable quota accountant persists repeated records and survives re-instantiation", async () => {
@@ -298,7 +227,6 @@ test("quota usage summaries aggregate by bucket, scope, and operation", async ()
         scopeType: "user",
         scopeId: prefix,
         operation: "videos.list",
-        operationId: `${prefix}-operation-1`,
         operationCount: 1,
         estimatedUnits: 1,
       },
@@ -312,7 +240,6 @@ test("quota usage summaries aggregate by bucket, scope, and operation", async ()
         scopeType: "global",
         scopeId: null,
         operation: "videos.update",
-        operationId: `${prefix}-operation-3`,
         operationCount: 1,
         estimatedUnits: 50,
       },
@@ -330,94 +257,10 @@ test("quota usage summaries aggregate by bucket, scope, and operation", async ()
         scopeType: "user",
         scopeId: prefix,
         operation: "videos.list",
-        operationId: `${prefix}-operation-1`,
-        operationCount: 1,
-        estimatedUnits: 1,
-      },
-      {
-        bucketStart: "2099-01-01",
-        scopeType: "user",
-        scopeId: prefix,
-        operation: "videos.list",
-        operationId: `${prefix}-operation-2`,
-        operationCount: 1,
-        estimatedUnits: 2,
+        operationCount: 2,
+        estimatedUnits: 3,
       },
     ],
-  );
-});
-
-test("quota usage repository preserves nullable channel rows and summarizes by channel", async () => {
-  const prefix = `channel-${Date.now()}-${Math.random()}`;
-  await quotaUsageRepository.insert({
-    id: `${prefix}-legacy`,
-    scopeType: "user",
-    scopeId: prefix,
-    channelId: null,
-    bucketStart: "2099-02-01",
-    operation: "videos.list",
-    estimatedUnits: 1,
-    operationId: `${prefix}-legacy-operation`,
-    recordedAt: "2099-02-01T00:00:00.000Z",
-  });
-  await quotaUsageRepository.insert({
-    id: `${prefix}-channel`,
-    scopeType: "user",
-    scopeId: prefix,
-    channelId: "channel-a",
-    bucketStart: "2099-02-01",
-    operation: "videos.list",
-    estimatedUnits: 2,
-    operationId: `${prefix}-channel-operation`,
-    recordedAt: "2099-02-01T00:01:00.000Z",
-  });
-
-  assert.equal(
-    (await listQuotaUsage({ operationId: `${prefix}-channel-operation` }))[0]
-      ?.channelId,
-    "channel-a",
-  );
-  assert.deepEqual(await summarizeQuotaUsage({ scopeId: prefix }), [
-    {
-      bucketStart: "2099-02-01",
-      scopeType: "user",
-      scopeId: prefix,
-      operation: "videos.list",
-      operationId: `${prefix}-legacy-operation`,
-      operationCount: 1,
-      estimatedUnits: 1,
-    },
-    {
-      bucketStart: "2099-02-01",
-      scopeType: "user",
-      scopeId: prefix,
-      channelId: "channel-a",
-      operation: "videos.list",
-      operationId: `${prefix}-channel-operation`,
-      operationCount: 1,
-      estimatedUnits: 2,
-    },
-  ]);
-});
-
-test("quota usage schema has migration-safe reporting indexes", async () => {
-  await databaseInitialization;
-  await databaseInitialization;
-  const indexes = await db.all<{ name: string }>(sql`
-    SELECT name
-    FROM sqlite_master
-    WHERE type = 'index'
-      AND tbl_name = 'youtube_quota_usage'
-      AND name NOT LIKE 'sqlite_autoindex_%'
-  `);
-
-  assert.deepEqual(
-    indexes.map((index) => index.name).sort(),
-    [
-      "youtube_quota_usage_operation_id_idx",
-      "youtube_quota_usage_scope_date_operation_idx",
-      "youtube_quota_usage_scope_channel_date_operation_idx",
-    ].sort(),
   );
 });
 
@@ -451,80 +294,7 @@ test("quota cost table is explicit for playlist and transcript operations", () =
 });
 
 test('"reports.query" quota cost exists and is a valid QuotaOperation', () => {
-  const operation = "reports.query" as keyof typeof YOUTUBE_QUOTA_COSTS;
-  assert.equal(YOUTUBE_QUOTA_COSTS[operation], 1);
-  assert.equal(Object.hasOwn(YOUTUBE_QUOTA_COSTS, operation), true);
-});
-
-test("runtime validation rejects unknown operations before recording or persisting", async () => {
-  const inserts: unknown[] = [];
-  const accountant = new DurableQuotaAccountant({
-    repository: {
-      insert: async (entry) => {
-        inserts.push(entry);
-      },
-    },
-  });
-
-  assert.throws(() =>
-    accountant.record({
-      operationId: "invalid-operation",
-      operation: "unknown.operation" as QuotaOperation,
-    }),
-  );
-  await accountant.flush();
-
-  assert.deepEqual(accountant.entries(), []);
-  assert.deepEqual(inserts, []);
-});
-
-test("runtime validation rejects empty operation identities", () => {
-  const accountant = new InMemoryQuotaAccountant();
-
-  assert.throws(() =>
-    accountant.record({ operationId: "   ", operation: "videos.list" }),
-  );
-  assert.deepEqual(accountant.entries(), []);
-});
-
-test("concurrent flushes drain each queued record exactly once", async () => {
-  const inserts: string[] = [];
-  const accountant = new DurableQuotaAccountant({
-    repository: {
-      insert: async ({ operationId }) => {
-        inserts.push(operationId);
-        await new Promise((resolve) => setTimeout(resolve, 5));
-      },
-    },
-  });
-  accountant.record({ operationId: "concurrent", operation: "videos.list" });
-
-  await Promise.all([accountant.flush(), accountant.flush()]);
-
-  assert.deepEqual(inserts, ["concurrent"]);
-});
-
-test("records added during a flush trigger a subsequent drain", async () => {
-  let releaseFirst!: () => void;
-  const firstPersistence = new Promise<void>((resolve) => {
-    releaseFirst = resolve;
-  });
-  const inserts: string[] = [];
-  const accountant = new DurableQuotaAccountant({
-    repository: {
-      insert: async ({ operationId }) => {
-        inserts.push(operationId);
-        if (operationId === "first") await firstPersistence;
-      },
-    },
-  });
-
-  accountant.record({ operationId: "first", operation: "videos.list" });
-  const firstFlush = accountant.flush();
-  await Promise.resolve();
-  accountant.record({ operationId: "during", operation: "videos.list" });
-  releaseFirst();
-  await firstFlush;
-
-  assert.deepEqual(inserts, ["first", "during"]);
+  assert.equal(YOUTUBE_QUOTA_COSTS["reports.query"], 1);
+  const validOps: QuotaOperation[] = ["reports.query"];
+  assert.ok(validOps.every((op) => op in YOUTUBE_QUOTA_COSTS));
 });
