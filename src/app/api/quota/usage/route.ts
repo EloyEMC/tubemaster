@@ -36,12 +36,12 @@ function isCalendarDate(value: string): boolean {
   );
 }
 
-    function isValidChannelId(value: string): boolean {
-      return value.length > 0 && /^[A-Za-z0-9_-]+$/.test(value);
-    }
+function isValidChannelId(value: string): boolean {
+  return value.length > 0 && /^[A-Za-z0-9_-]+$/.test(value);
+}
 
-    function invalidQueryResponse() {
-      return NextResponse.json(
+function invalidQueryResponse() {
+  return NextResponse.json(
     {
       error: "Invalid quota usage query",
       code: "INVALID_INPUT",
@@ -96,17 +96,17 @@ export function createQuotaUsageGetHandler(
       filter.operation = operation;
     }
 
-        const operationId = url.searchParams.get("operationId");
-        if (operationId !== null) filter.operationId = operationId;
+    const operationId = url.searchParams.get("operationId");
+    if (operationId !== null) filter.operationId = operationId;
 
-        const channelId = url.searchParams.get("channelId");
-        if (channelId !== null) {
-          if (!isValidChannelId(channelId)) return invalidQueryResponse();
-          filter.channelId = channelId;
-        }
+    const channelId = url.searchParams.get("channelId");
+    if (channelId !== null) {
+      if (!isValidChannelId(channelId)) return invalidQueryResponse();
+      filter.channelId = channelId;
+    }
 
-        try {
-          const summaries = await deps.repository.summarizeQuotaUsage(filter);
+    try {
+      const summaries = await deps.repository.summarizeQuotaUsage(filter);
 
       return NextResponse.json({ summaries });
     } catch {

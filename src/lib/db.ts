@@ -92,23 +92,23 @@ async function initializeDatabase() {
       ON youtube_quota_usage (operation_id);
   `);
 
-      // Migration: add quota channel_id if missing (idempotent)
-      try {
-        await rawClient.execute(
-          "ALTER TABLE youtube_quota_usage ADD COLUMN channel_id TEXT",
-        );
-          } catch {
-            // Column already exists
-          }
+  // Migration: add quota channel_id if missing (idempotent)
+  try {
+    await rawClient.execute(
+      "ALTER TABLE youtube_quota_usage ADD COLUMN channel_id TEXT",
+    );
+  } catch {
+    // Column already exists
+  }
 
-          // Migration: add channel-aware reporting index (idempotent)
-          await rawClient.execute(`
+  // Migration: add channel-aware reporting index (idempotent)
+  await rawClient.execute(`
             CREATE INDEX IF NOT EXISTS youtube_quota_usage_scope_channel_date_operation_idx
               ON youtube_quota_usage (scope_type, scope_id, channel_id, bucket_start, operation)
           `);
 
-          // Migration: add selected_channel_id if missing (idempotent)
-      try {
+  // Migration: add selected_channel_id if missing (idempotent)
+  try {
     await rawClient.execute(
       "ALTER TABLE users ADD COLUMN selected_channel_id TEXT",
     );

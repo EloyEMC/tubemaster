@@ -33,19 +33,19 @@ function makeAuthStub(whoami: AuthStub["whoami"]): AuthStub {
   };
 }
 
-    test("quota usage parser accepts the optional channel filter", () => {
-      assert.deepEqual(parseArgs(["quota", "usage", "--channelId", "channel-a"]), {
-        namespace: "quota",
-        command: "usage",
-        flags: { channelId: "channel-a" },
-      });
-      assert.throws(() => parseArgs(["quota", "usage", "--channelId", ""]), {
-        name: "DomainError",
-        message: "Invalid --channelId",
-      });
-    });
+test("quota usage parser accepts the optional channel filter", () => {
+  assert.deepEqual(parseArgs(["quota", "usage", "--channelId", "channel-a"]), {
+    namespace: "quota",
+    command: "usage",
+    flags: { channelId: "channel-a" },
+  });
+  assert.throws(() => parseArgs(["quota", "usage", "--channelId", ""]), {
+    name: "DomainError",
+    message: "Invalid --channelId",
+  });
+});
 
-    test("quota usage parser accepts the command and rejects flags or unknown subcommands", () => {
+test("quota usage parser accepts the command and rejects flags or unknown subcommands", () => {
   assert.deepEqual(parseArgs(["quota", "usage"]), {
     namespace: "quota",
     command: "usage",
@@ -62,29 +62,29 @@ function makeAuthStub(whoami: AuthStub["whoami"]): AuthStub {
   });
 });
 
-    test("quota usage forwards channel filtering and preserves the JSON envelope", async () => {
-      const stdout: string[] = [];
-      const filters: unknown[] = [];
-      const exitCode = await runCliCommand({
-        argv: ["quota", "usage", "--channelId", "channel-a"],
-        auth: makeAuthStub(async () => ({ userId: "active-user" })),
-        quotaReader: {
-          summarizeQuotaUsage: async (filter) => {
-            filters.push(filter);
-            return [];
-          },
-        },
-        writeStdout: (line) => stdout.push(line),
-      });
+test("quota usage forwards channel filtering and preserves the JSON envelope", async () => {
+  const stdout: string[] = [];
+  const filters: unknown[] = [];
+  const exitCode = await runCliCommand({
+    argv: ["quota", "usage", "--channelId", "channel-a"],
+    auth: makeAuthStub(async () => ({ userId: "active-user" })),
+    quotaReader: {
+      summarizeQuotaUsage: async (filter) => {
+        filters.push(filter);
+        return [];
+      },
+    },
+    writeStdout: (line) => stdout.push(line),
+  });
 
-      assert.equal(exitCode, 0);
-      assert.deepEqual(filters, [
-        { scopeType: "user", scopeId: "active-user", channelId: "channel-a" },
-      ]);
-      assert.deepEqual(JSON.parse(stdout[0] ?? "{}"), { ok: true, data: [] });
-    });
+  assert.equal(exitCode, 0);
+  assert.deepEqual(filters, [
+    { scopeType: "user", scopeId: "active-user", channelId: "channel-a" },
+  ]);
+  assert.deepEqual(JSON.parse(stdout[0] ?? "{}"), { ok: true, data: [] });
+});
 
-    test("quota usage queries the exact active-user scope and serializes the result", async () => {
+test("quota usage queries the exact active-user scope and serializes the result", async () => {
   const stdout: string[] = [];
   const filters: unknown[] = [];
   const summary = [

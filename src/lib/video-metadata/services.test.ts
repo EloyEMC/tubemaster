@@ -291,6 +291,55 @@ test("getTranscript keeps available status", async () => {
   assert.equal(result.transcript.status, "available");
 });
 
+test("getTranscript rejects invalid input without calling the provider", async () => {
+  let providerCalls = 0;
+  const services = createVideoMetadataServices(
+    makeDeps({
+      transcriptProvider: {
+        getTranscript: async () => {
+          providerCalls += 1;
+          return { status: "available", text: "unused" };
+        },
+      },
+    }),
+  );
+
+  await assert.rejects(
+    () =>
+      services.getTranscript({
+        credentialRef: { userId: "user-1" },
+        videoId: "",
+      }),
+    (error: unknown) =>
+      error instanceof DomainError &&
+      error.code === "validation_failed" &&
+      error.message === "Invalid transcript input",
+  );
+  assert.equal(providerCalls, 0);
+});
+
+test("getTranscript rejects invalid adapter output", async () => {
+  const services = createVideoMetadataServices(
+    makeDeps({
+      transcriptProvider: {
+        getTranscript: async () => ({ status: "available", text: "" }),
+      },
+    }),
+  );
+
+  await assert.rejects(
+    () =>
+      services.getTranscript({
+        credentialRef: { userId: "user-1" },
+        videoId: "video-1",
+      }),
+    (error: unknown) =>
+      error instanceof DomainError &&
+      error.code === "validation_failed" &&
+      error.message === "Invalid transcript output",
+  );
+});
+
 test("getTranscript keeps unavailable status", async () => {
   const services = createVideoMetadataServices(
     makeDeps({

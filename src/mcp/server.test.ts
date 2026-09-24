@@ -25,12 +25,19 @@ function makeCoreStub(): Pick<
     },
     getTranscript: async (input: unknown) => {
       void input;
-      return { transcript: { status: "available" as const, text: "Transcript" } };
+      return {
+        transcript: { status: "available" as const, text: "Transcript" },
+      };
     },
     previewMetadata: async (input: unknown) => {
       void input;
       return {
-        video: { videoId: "v1", title: "Video", description: "Desc", publishedAt: "2024-01-01" },
+        video: {
+          videoId: "v1",
+          title: "Video",
+          description: "Desc",
+          publishedAt: "2024-01-01",
+        },
         transcript: { status: "available" as const, text: "Transcript" },
         draft: {
           finalTitle: "Final",
@@ -47,8 +54,16 @@ function makeCoreStub(): Pick<
         targetLanguage: "es",
         languageSource: "defaultLanguage" as const,
         snippet: {
-          before: { title: "Before", description: "Before desc", categoryId: "22" },
-          proposed: { title: "After", description: "After desc", categoryId: "22" },
+          before: {
+            title: "Before",
+            description: "Before desc",
+            categoryId: "22",
+          },
+          proposed: {
+            title: "After",
+            description: "After desc",
+            categoryId: "22",
+          },
         },
         localizations: {
           before: {
@@ -129,8 +144,10 @@ function makeAuthStub() {
       alignment: {
         status: "mismatch",
         requiresReauth: true,
-        message: "Selected expected channel does not match the active OAuth channel.",
-        recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
+        message:
+          "Selected expected channel does not match the active OAuth channel.",
+        recommendedAction:
+          "Reauthenticate with the expected channel or select the active channel.",
       },
       requiresReauth: true,
       knownChannels: [
@@ -173,8 +190,10 @@ function makeAuthStub() {
         alignment: {
           status: "mismatch",
           requiresReauth: true,
-          message: "Selected expected channel does not match the active OAuth channel.",
-          recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
+          message:
+            "Selected expected channel does not match the active OAuth channel.",
+          recommendedAction:
+            "Reauthenticate with the expected channel or select the active channel.",
         },
         requiresReauth: true,
       },
@@ -201,8 +220,10 @@ function makeAuthStub() {
         alignment: {
           status: "mismatch",
           requiresReauth: true,
-          message: "Selected expected channel does not match the active OAuth channel.",
-          recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
+          message:
+            "Selected expected channel does not match the active OAuth channel.",
+          recommendedAction:
+            "Reauthenticate with the expected channel or select the active channel.",
         },
         requiresReauth: true,
       },
@@ -211,8 +232,10 @@ function makeAuthStub() {
       alignment: {
         status: "mismatch",
         requiresReauth: true,
-        message: "Selected expected channel does not match the active OAuth channel.",
-        recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
+        message:
+          "Selected expected channel does not match the active OAuth channel.",
+        recommendedAction:
+          "Reauthenticate with the expected channel or select the active channel.",
       },
       requiresReauth: true,
       affectsRemoteOAuth: false as const,
@@ -237,8 +260,10 @@ function makeAuthStub() {
       alignment: {
         status: "mismatch",
         requiresReauth: true,
-        message: "Selected expected channel does not match the active OAuth channel.",
-        recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
+        message:
+          "Selected expected channel does not match the active OAuth channel.",
+        recommendedAction:
+          "Reauthenticate with the expected channel or select the active channel.",
       },
       activeWriteChannel: { id: "UC_ACTIVE", title: "Active channel" },
       selectedChannelId: "UC_SELECTED",
@@ -254,15 +279,23 @@ function makeAuthStub() {
       alignment: {
         status: "mismatch",
         requiresReauth: true,
-        message: "Selected expected channel does not match the active OAuth channel.",
-        recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
+        message:
+          "Selected expected channel does not match the active OAuth channel.",
+        recommendedAction:
+          "Reauthenticate with the expected channel or select the active channel.",
       },
       knownChannels: [],
       requiresReauth: true,
-      message: "Selected expected channel does not match the active OAuth channel.",
-      recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
+      message:
+        "Selected expected channel does not match the active OAuth channel.",
+      recommendedAction:
+        "Reauthenticate with the expected channel or select the active channel.",
     }),
-    resolveEffectiveCredentialRef: async ({ explicit }: { explicit?: unknown }) =>
+    resolveEffectiveCredentialRef: async ({
+      explicit,
+    }: {
+      explicit?: unknown;
+    }) =>
       (explicit as { userId: string } | undefined) ?? { userId: "active-user" },
   };
 }
@@ -308,7 +341,9 @@ test("MCP whoami returns active local user", async () => {
 
 test("MCP server registers auth_user_select tool", () => {
   const server = createMcpServer(makeCoreStub());
-  const tools = (server as unknown as { _registeredTools?: Record<string, unknown> })._registeredTools;
+  const tools = (
+    server as unknown as { _registeredTools?: Record<string, unknown> }
+  )._registeredTools;
 
   assert.equal(Boolean(tools?.auth_user_select), true);
 });
@@ -475,8 +510,16 @@ test("MCP apply tool supports dry-run review without mutation", async () => {
       targetLanguage: "es",
       languageSource: "defaultLanguage" as const,
       snippet: {
-        before: { title: "Before", description: "Before desc", categoryId: "22" },
-        proposed: { title: "After", description: "After desc", categoryId: "22" },
+        before: {
+          title: "Before",
+          description: "Before desc",
+          categoryId: "22",
+        },
+        proposed: {
+          title: "After",
+          description: "After desc",
+          categoryId: "22",
+        },
       },
       localizations: {
         before: {
@@ -567,6 +610,24 @@ test("MCP apply keeps structuredContent parity between dryRun and apply", async 
   delete dryRunPayload.dryRun;
   delete applyPayload.dryRun;
   assert.deepEqual(dryRunPayload, applyPayload);
+});
+
+test("MCP transcript passes through unsupported status in structuredContent and text", async () => {
+  const core = makeCoreStub();
+  core.getTranscript = async () => ({
+    transcript: { status: "unsupported", reason: "provider-missing" },
+  });
+
+  const handlers = createMcpToolHandlers(core, makeAuthStub());
+  const result = await handlers.transcript({ videoId: "v1" });
+
+  assert.equal(result.isError, undefined);
+  assert.deepEqual(result.structuredContent, {
+    transcript: { status: "unsupported", reason: "provider-missing" },
+  });
+  assert.deepEqual(JSON.parse(result.content[0]?.text ?? "{}"), {
+    transcript: { status: "unsupported", reason: "provider-missing" },
+  });
 });
 
 test("MCP transcript keeps structuredContent and text payload aligned with diagnostics", async () => {
@@ -668,8 +729,10 @@ test("MCP returns AUTH_USER_NOT_FOUND as structured error", async () => {
       alignment: {
         status: "mismatch",
         requiresReauth: true,
-        message: "Selected expected channel does not match the active OAuth channel.",
-        recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
+        message:
+          "Selected expected channel does not match the active OAuth channel.",
+        recommendedAction:
+          "Reauthenticate with the expected channel or select the active channel.",
       },
       requiresReauth: true,
       knownChannels: [],
@@ -682,8 +745,10 @@ test("MCP returns AUTH_USER_NOT_FOUND as structured error", async () => {
         alignment: {
           status: "mismatch",
           requiresReauth: true,
-          message: "Selected expected channel does not match the active OAuth channel.",
-          recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
+          message:
+            "Selected expected channel does not match the active OAuth channel.",
+          recommendedAction:
+            "Reauthenticate with the expected channel or select the active channel.",
         },
         requiresReauth: true,
       },
@@ -695,7 +760,8 @@ test("MCP returns AUTH_USER_NOT_FOUND as structured error", async () => {
         status: "unresolved",
         requiresReauth: false,
         message: "No expected write channel is configured yet.",
-        recommendedAction: "Select the expected channel before running sensitive write operations.",
+        recommendedAction:
+          "Select the expected channel before running sensitive write operations.",
       },
       activeWriteChannel: null,
       selectedChannelId: null,
@@ -711,13 +777,17 @@ test("MCP returns AUTH_USER_NOT_FOUND as structured error", async () => {
       alignment: {
         status: "mismatch",
         requiresReauth: true,
-        message: "Selected expected channel does not match the active OAuth channel.",
-        recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
+        message:
+          "Selected expected channel does not match the active OAuth channel.",
+        recommendedAction:
+          "Reauthenticate with the expected channel or select the active channel.",
       },
       knownChannels: [],
       requiresReauth: true,
-      message: "Selected expected channel does not match the active OAuth channel.",
-      recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
+      message:
+        "Selected expected channel does not match the active OAuth channel.",
+      recommendedAction:
+        "Reauthenticate with the expected channel or select the active channel.",
     }),
     selectUser: async () => ({
       activeUser: {
@@ -740,8 +810,10 @@ test("MCP returns AUTH_USER_NOT_FOUND as structured error", async () => {
         alignment: {
           status: "mismatch",
           requiresReauth: true,
-          message: "Selected expected channel does not match the active OAuth channel.",
-          recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
+          message:
+            "Selected expected channel does not match the active OAuth channel.",
+          recommendedAction:
+            "Reauthenticate with the expected channel or select the active channel.",
         },
         requiresReauth: true,
       },
@@ -750,8 +822,10 @@ test("MCP returns AUTH_USER_NOT_FOUND as structured error", async () => {
       alignment: {
         status: "mismatch",
         requiresReauth: true,
-        message: "Selected expected channel does not match the active OAuth channel.",
-        recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
+        message:
+          "Selected expected channel does not match the active OAuth channel.",
+        recommendedAction:
+          "Reauthenticate with the expected channel or select the active channel.",
       },
       requiresReauth: true,
       affectsRemoteOAuth: false as const,
@@ -1042,7 +1116,6 @@ test("MCP playlist_delete forwards confirmed input and returns success", async (
     expectedChannelId: "UC_ACTIVE",
     confirmed: true,
   });
-
   assert.deepEqual(result.structuredContent, {
     deleted: true,
     playlistId: "p-delete",
@@ -1063,11 +1136,13 @@ test("MCP playlist_* tools reject invalid input with structured validation error
     },
     {
       toolName: "playlist_add_videos",
-      invoke: () => handlers.playlistAddVideos({ playlistId: "p1", videoIds: [] }),
+      invoke: () =>
+        handlers.playlistAddVideos({ playlistId: "p1", videoIds: [] }),
     },
     {
       toolName: "playlist_remove_videos",
-      invoke: () => handlers.playlistRemoveVideos({ playlistId: "p1", videoIds: [] }),
+      invoke: () =>
+        handlers.playlistRemoveVideos({ playlistId: "p1", videoIds: [] }),
     },
     {
       toolName: "playlist_delete",
@@ -1075,25 +1150,37 @@ test("MCP playlist_* tools reject invalid input with structured validation error
     },
     {
       toolName: "playlist_update",
-      invoke: () => handlers.playlistUpdate({ playlistId: "p1", expectedChannelId: "UC_ACTIVE" }),
+      invoke: () =>
+        handlers.playlistUpdate({
+          playlistId: "p1",
+          expectedChannelId: "UC_ACTIVE",
+        }),
     },
   ];
 
   for (const invalidCall of invalidCalls) {
     const result = await invalidCall.invoke();
-    assert.equal(result.isError, true, `${invalidCall.toolName} should return error`);
+    assert.equal(
+      result.isError,
+      true,
+      `${invalidCall.toolName} should return error`,
+    );
 
     const payload = JSON.parse(result.content[0]?.text ?? "{}");
-    assert.equal(payload.ok, false, `${invalidCall.toolName} should return ok=false`);
+    assert.equal(
+      payload.ok,
+      false,
+      `${invalidCall.toolName} should return ok=false`,
+    );
     assert.equal(
       payload.error.code,
       "validation_failed",
-      `${invalidCall.toolName} should return validation_failed`
+      `${invalidCall.toolName} should return validation_failed`,
     );
     assert.equal(
       Array.isArray(payload.error.details),
       true,
-      `${invalidCall.toolName} should include validation details`
+      `${invalidCall.toolName} should include validation details`,
     );
   }
 });
@@ -1479,13 +1566,17 @@ test("MCP playlist_update fails closed on invalid ownership with structured erro
   const result = await handlers.playlistUpdate({
     playlistId: "p-update",
     expectedChannelId: "UC_ACTIVE",
+    confirmed: true,
     description: "Updated description",
   });
 
   assert.equal(result.isError, true);
   const payload = JSON.parse(result.content[0]?.text ?? "{}");
   assert.equal(payload.error.code, "WRITE_CHANNEL_MISMATCH");
-  assert.match(payload.error.message, /does not belong to the active write channel/);
+  assert.match(
+    payload.error.message,
+    /does not belong to the active write channel/,
+  );
   assert.deepEqual(payload.error.details, {
     expectedChannelId: "UC_ACTIVE",
     activeWriteChannelId: "UC_OTHER",

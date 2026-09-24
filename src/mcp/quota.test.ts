@@ -137,50 +137,50 @@ test("MCP quota_usage scopes summaries to the authenticated active user", async 
   assert.equal(result.isError, undefined);
 });
 
-    test("MCP quota_usage forwards channel filtering with the active user scope", async () => {
-      let capturedFilter: QuotaUsageSummaryFilter | undefined;
-      const handlers = createMcpToolHandlers(
-        makeCoreStub(),
-        makeAuthStub(),
-        makeReader(async (filter) => {
-          capturedFilter = filter;
-          return [];
-        }),
-      );
+test("MCP quota_usage forwards channel filtering with the active user scope", async () => {
+  let capturedFilter: QuotaUsageSummaryFilter | undefined;
+  const handlers = createMcpToolHandlers(
+    makeCoreStub(),
+    makeAuthStub(),
+    makeReader(async (filter) => {
+      capturedFilter = filter;
+      return [];
+    }),
+  );
 
-      const result = await handlers.quotaUsage({ channelId: "channel-a" });
+  const result = await handlers.quotaUsage({ channelId: "channel-a" });
 
-      assert.equal(result.isError, undefined);
-      assert.deepEqual(capturedFilter, {
-        scopeType: "user",
-        scopeId: "active-user",
-        channelId: "channel-a",
-      });
-    });
+  assert.equal(result.isError, undefined);
+  assert.deepEqual(capturedFilter, {
+    scopeType: "user",
+    scopeId: "active-user",
+    channelId: "channel-a",
+  });
+});
 
-    test("MCP quota_usage rejects empty or invalid channel filters", async () => {
-      for (const channelId of ["", "   ", "channel/a"]) {
-        let authCalls = 0;
-        const handlers = createMcpToolHandlers(
-          makeCoreStub(),
-          makeAuthStub({
-            whoami: async () => {
-              authCalls += 1;
-              return { userId: "active-user" };
-            },
-          }),
-          makeReader(async () => []),
-        );
+test("MCP quota_usage rejects empty or invalid channel filters", async () => {
+  for (const channelId of ["", "   ", "channel/a"]) {
+    let authCalls = 0;
+    const handlers = createMcpToolHandlers(
+      makeCoreStub(),
+      makeAuthStub({
+        whoami: async () => {
+          authCalls += 1;
+          return { userId: "active-user" };
+        },
+      }),
+      makeReader(async () => []),
+    );
 
-        const result = await handlers.quotaUsage({ channelId });
+    const result = await handlers.quotaUsage({ channelId });
 
-        assert.equal(result.isError, true);
-        assert.equal(authCalls, 0);
-        assert.match(result.content[0]?.text ?? "", /validation_failed/);
-      }
-    });
+    assert.equal(result.isError, true);
+    assert.equal(authCalls, 0);
+    assert.match(result.content[0]?.text ?? "", /validation_failed/);
+  }
+});
 
-    test("MCP quota_usage rejects non-empty input before authentication", async () => {
+test("MCP quota_usage rejects non-empty input before authentication", async () => {
   let authCalls = 0;
   const auth = makeAuthStub({
     whoami: async () => {

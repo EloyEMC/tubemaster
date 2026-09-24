@@ -7,15 +7,15 @@ function makeRequest(body: unknown) {
   return new Request("http://localhost/api/youtube/add-to-playlist", {
     method: "POST",
     headers: { "content-type": "application/json" },
-body: JSON.stringify(body),
+    body: JSON.stringify(body),
   });
 }
 
 function makeRawRequest(body: string) {
   return new Request("http://localhost/api/youtube/add-to-playlist", {
-method: "POST",
-headers: { "content-type": "application/json" },
-body,
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body,
   });
 }
 
@@ -121,14 +121,54 @@ test("add-to-playlist route rejects invalid field types before core", async () =
   });
 
   const invalidBodies = [
-    { playlistId: "p1", videoIds: "v1", expectedChannelId: "UC_EXPECTED", confirmed: true },
-    { playlistId: 42, videoIds: ["v1"], expectedChannelId: "UC_EXPECTED", confirmed: true },
-    { playlistId: "p1", videoIds: ["v1"], expectedChannelId: 42, confirmed: true },
-    { playlistId: "p1", videoIds: [""], expectedChannelId: "UC_EXPECTED", confirmed: true },
-    { playlistId: "p1", videoIds: ["v1", 42], expectedChannelId: "UC_EXPECTED", confirmed: true },
-    { playlistId: "   ", videoIds: ["v1"], expectedChannelId: "UC_EXPECTED", confirmed: true },
-    { playlistId: "p1", videoIds: ["v1"], expectedChannelId: "   ", confirmed: true },
-    { playlistId: "p1", videoIds: ["   "], expectedChannelId: "UC_EXPECTED", confirmed: true },
+    {
+      playlistId: "p1",
+      videoIds: "v1",
+      expectedChannelId: "UC_EXPECTED",
+      confirmed: true,
+    },
+    {
+      playlistId: 42,
+      videoIds: ["v1"],
+      expectedChannelId: "UC_EXPECTED",
+      confirmed: true,
+    },
+    {
+      playlistId: "p1",
+      videoIds: ["v1"],
+      expectedChannelId: 42,
+      confirmed: true,
+    },
+    {
+      playlistId: "p1",
+      videoIds: [""],
+      expectedChannelId: "UC_EXPECTED",
+      confirmed: true,
+    },
+    {
+      playlistId: "p1",
+      videoIds: ["v1", 42],
+      expectedChannelId: "UC_EXPECTED",
+      confirmed: true,
+    },
+    {
+      playlistId: "   ",
+      videoIds: ["v1"],
+      expectedChannelId: "UC_EXPECTED",
+      confirmed: true,
+    },
+    {
+      playlistId: "p1",
+      videoIds: ["v1"],
+      expectedChannelId: "   ",
+      confirmed: true,
+    },
+    {
+      playlistId: "p1",
+      videoIds: ["   "],
+      expectedChannelId: "UC_EXPECTED",
+      confirmed: true,
+    },
   ];
 
   for (const body of invalidBodies) {

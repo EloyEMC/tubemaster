@@ -1,0 +1,7 @@
+# TubeMaster repository migration
+
+Canonical task document: `odd/tasks/tubemaster-repository-migration.md`
+
+- [ ] Snapshot local migration state and compare histories.
+- [ ] Publish the local state safely to `EloyEMC/tubemaster`.
+- [ ] Verify the remote branch and document how to continue work.

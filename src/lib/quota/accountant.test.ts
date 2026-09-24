@@ -118,7 +118,7 @@ test("default accountant factory derives durable user and global scopes from res
         scopeType: string;
         scopeId: string | null;
         channelId?: string | null;
-          }) => {
+      }) => {
         inserted.push({ scopeType: entry.scopeType, scopeId: entry.scopeId });
       },
     },
@@ -377,30 +377,27 @@ test("quota usage repository preserves nullable channel rows and summarizes by c
       ?.channelId,
     "channel-a",
   );
-  assert.deepEqual(
-    await summarizeQuotaUsage({ scopeId: prefix }),
-    [
-      {
-        bucketStart: "2099-02-01",
-        scopeType: "user",
-        scopeId: prefix,
-        operation: "videos.list",
-        operationId: `${prefix}-legacy-operation`,
-        operationCount: 1,
-        estimatedUnits: 1,
-      },
-      {
-        bucketStart: "2099-02-01",
-        scopeType: "user",
-        scopeId: prefix,
-        channelId: "channel-a",
-        operation: "videos.list",
-        operationId: `${prefix}-channel-operation`,
-        operationCount: 1,
-        estimatedUnits: 2,
-      },
-    ],
-  );
+  assert.deepEqual(await summarizeQuotaUsage({ scopeId: prefix }), [
+    {
+      bucketStart: "2099-02-01",
+      scopeType: "user",
+      scopeId: prefix,
+      operation: "videos.list",
+      operationId: `${prefix}-legacy-operation`,
+      operationCount: 1,
+      estimatedUnits: 1,
+    },
+    {
+      bucketStart: "2099-02-01",
+      scopeType: "user",
+      scopeId: prefix,
+      channelId: "channel-a",
+      operation: "videos.list",
+      operationId: `${prefix}-channel-operation`,
+      operationCount: 1,
+      estimatedUnits: 2,
+    },
+  ]);
 });
 
 test("quota usage schema has migration-safe reporting indexes", async () => {

@@ -34,12 +34,12 @@ export function createAddToPlaylistPostHandler(
 
     const { confirmed, videoIds, playlistId, expectedChannelId } =
       body && typeof body === "object" && !Array.isArray(body)
-        ? body as {
+        ? (body as {
             confirmed?: unknown;
             videoIds?: unknown;
             playlistId?: unknown;
             expectedChannelId?: unknown;
-          }
+          })
         : {};
     if (confirmed !== true) {
       return NextResponse.json(
@@ -59,15 +59,17 @@ export function createAddToPlaylistPostHandler(
       !Array.isArray(videoIds) ||
       videoIds.length === 0 ||
       videoIds.some(
-        (videoId) =>
-          typeof videoId !== "string" || videoId.trim().length === 0,
+        (videoId) => typeof videoId !== "string" || videoId.trim().length === 0,
       )
     ) {
       return NextResponse.json({ error: "Invalid videoIds" }, { status: 400 });
     }
 
     if (typeof playlistId !== "string" || playlistId.trim().length === 0) {
-      return NextResponse.json({ error: "Invalid playlistId" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid playlistId" },
+        { status: 400 },
+      );
     }
 
     if (expectedChannelId === undefined) {

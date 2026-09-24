@@ -139,16 +139,18 @@ export class DurableQuotaAccountant extends InMemoryQuotaAccountant {
     this.onPersistenceError = options.onPersistenceError ?? (() => undefined);
   }
 
-      override entries(): readonly QuotaEntry[] {
-        return super.entries().map((entry) =>
-          this.channelId === undefined
-            ? entry
-            : { ...entry, channelId: this.channelId },
-        );
-      }
+  override entries(): readonly QuotaEntry[] {
+    return super
+      .entries()
+      .map((entry) =>
+        this.channelId === undefined
+          ? entry
+          : { ...entry, channelId: this.channelId },
+      );
+  }
 
-      override record(entry: QuotaRecord): void {
-        super.record(entry);
+  override record(entry: QuotaRecord): void {
+    super.record(entry);
     const recordedAt = this.now();
     this.pending.push({
       scopeType: this.userId ? "user" : "global",

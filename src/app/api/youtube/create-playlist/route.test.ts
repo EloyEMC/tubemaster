@@ -256,57 +256,57 @@ test("create-playlist route hides unknown provider failure details", async () =>
 });
 
 test("create-playlist route rejects non-string or blank expected channel before core", async () => {
-      let coreCalls = 0;
-      const handler = createCreatePlaylistPostHandler({
-        getSession: async () => ({ user: { id: "user-1" } }),
-        core: {
-          createPlaylist: async () => {
-            coreCalls += 1;
-            throw new Error("core should not be called");
-          },
-        },
-      });
+  let coreCalls = 0;
+  const handler = createCreatePlaylistPostHandler({
+    getSession: async () => ({ user: { id: "user-1" } }),
+    core: {
+      createPlaylist: async () => {
+        coreCalls += 1;
+        throw new Error("core should not be called");
+      },
+    },
+  });
 
-      for (const expectedChannelId of [123, "   "]) {
-        const response = await handler(
-          makeRequest({ title: "Roadtrip", expectedChannelId, confirmed: true }),
-        );
-        const payload = await response.json();
+  for (const expectedChannelId of [123, "   "]) {
+    const response = await handler(
+      makeRequest({ title: "Roadtrip", expectedChannelId, confirmed: true }),
+    );
+    const payload = await response.json();
 
-        assert.equal(response.status, 400);
-        assert.deepEqual(payload, { error: "Expected channel ID is required" });
-      }
+    assert.equal(response.status, 400);
+    assert.deepEqual(payload, { error: "Expected channel ID is required" });
+  }
 
-      assert.equal(coreCalls, 0);
-    });
+  assert.equal(coreCalls, 0);
+});
 
-    test("create-playlist route rejects non-string title without throwing", async () => {
-      let coreCalls = 0;
-      const handler = createCreatePlaylistPostHandler({
-        getSession: async () => ({ user: { id: "user-1" } }),
-        core: {
-          createPlaylist: async () => {
-            coreCalls += 1;
-            throw new Error("core should not be called");
-          },
-        },
-      });
+test("create-playlist route rejects non-string title without throwing", async () => {
+  let coreCalls = 0;
+  const handler = createCreatePlaylistPostHandler({
+    getSession: async () => ({ user: { id: "user-1" } }),
+    core: {
+      createPlaylist: async () => {
+        coreCalls += 1;
+        throw new Error("core should not be called");
+      },
+    },
+  });
 
-      const response = await handler(
-        makeRequest({
-          title: 123,
-          expectedChannelId: "UC_EXPECTED",
-          confirmed: true,
-        }),
-      );
-      const payload = await response.json();
+  const response = await handler(
+    makeRequest({
+      title: 123,
+      expectedChannelId: "UC_EXPECTED",
+      confirmed: true,
+    }),
+  );
+  const payload = await response.json();
 
-      assert.equal(response.status, 400);
-      assert.deepEqual(payload, { error: "Title is required" });
-      assert.equal(coreCalls, 0);
-    });
+  assert.equal(response.status, 400);
+  assert.deepEqual(payload, { error: "Title is required" });
+  assert.equal(coreCalls, 0);
+});
 
-    test("create-playlist route rejects missing title", async () => {
+test("create-playlist route rejects missing title", async () => {
   const handler = createCreatePlaylistPostHandler({
     getSession: async () => ({ user: { id: "user-1" } }),
     core: {

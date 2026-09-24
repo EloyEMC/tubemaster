@@ -83,11 +83,32 @@ test("transcript route keeps unavailable diagnostic contract unchanged", async (
   });
 });
 
+test("transcript route returns unsupported payload with HTTP 200", async () => {
+  const handler = createTranscriptPostHandler({
+    getSession: async () => ({ user: { id: "user-1" } }),
+    core: {
+      getTranscript: async () => ({
+        transcript: { status: "unsupported", reason: "provider-missing" },
+      }),
+    },
+  });
+
+  const response = await handler(makeRequest({ videoId: "video-1" }));
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(payload, {
+    transcript: { status: "unsupported", reason: "provider-missing" },
+  });
+});
+
 test("transcript route returns 401 when session is missing", async () => {
   const handler = createTranscriptPostHandler({
     getSession: async () => null,
     core: {
-      getTranscript: async () => ({ transcript: { status: "available", text: "unused" } }),
+      getTranscript: async () => ({
+        transcript: { status: "available", text: "unused" },
+      }),
     },
   });
 
@@ -120,11 +141,32 @@ test("transcript route maps validation errors to 400", async () => {
   assert.equal(payload.message, "Invalid transcript input");
 });
 
+test("transcript route maps malformed core output to validation_failed", async () => {
+  const handler = createTranscriptPostHandler({
+    getSession: async () => ({ user: { id: "user-1" } }),
+    core: {
+      getTranscript: async () => ({
+        transcript: { status: "available", text: "" },
+      }),
+    },
+  });
+
+  const response = await handler(makeRequest({ videoId: "video-1" }));
+  const payload = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.equal(payload.error, "validation_failed");
+  assert.equal(payload.message, "Invalid transcript output");
+  assert.equal(Array.isArray(payload.details), true);
+});
+
 test("transcript route maps malformed JSON bodies to 400", async () => {
   const handler = createTranscriptPostHandler({
     getSession: async () => ({ user: { id: "user-1" } }),
     core: {
-      getTranscript: async () => ({ transcript: { status: "available", text: "unused" } }),
+      getTranscript: async () => ({
+        transcript: { status: "available", text: "unused" },
+      }),
     },
   });
 

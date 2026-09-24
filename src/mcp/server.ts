@@ -162,14 +162,14 @@ export const writeChannelListInputSchema = z
   })
   .strict();
 
-    export const quotaUsageInputSchema = z
-      .object({
-        channelId: z
-          .string()
-          .regex(/^[A-Za-z0-9_-]+$/, "Invalid channelId")
-          .optional(),
-      })
-      .strict();
+export const quotaUsageInputSchema = z
+  .object({
+    channelId: z
+      .string()
+      .regex(/^[A-Za-z0-9_-]+$/, "Invalid channelId")
+      .optional(),
+  })
+  .strict();
 
 export const writeChannelSelectInputSchema = z
   .object({

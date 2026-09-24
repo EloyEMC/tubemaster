@@ -1307,7 +1307,10 @@ test("CLI playlist mutations reject string values for --confirmed", async () => 
   assert.equal(coreCalled, false);
   const envelope = JSON.parse(stderr[0] ?? "{}");
   assert.equal(envelope.error.code, "validation_failed");
-  assert.match(envelope.error.message, /--confirmed must be provided without a value/);
+  assert.match(
+    envelope.error.message,
+    /--confirmed must be provided without a value/,
+  );
 });
 
 test("CLI playlist list/create commands use shared core and stable JSON envelope", async () => {
@@ -1660,59 +1663,59 @@ test("CLI playlist delete fails closed on unresolved channel with stable error d
   });
 });
 
-    test("CLI playlist add/remove commands forward channel and return stable partial-result envelopes", async () => {
-      const core = makeCoreStub();
-      const stdout: string[] = [];
-      let capturedAddInput: unknown;
-      let capturedRemoveInput: unknown;
-      core.addVideosToPlaylist = async (input: unknown) => {
-        capturedAddInput = input;
-        return {
-          playlistId: "p1",
-          attempted: 2,
-          added: 1,
-          failures: [{ videoId: "v2", reason: "already-present" as const }],
-        };
-      };
-      core.removeVideosFromPlaylist = async (input: unknown) => {
-        capturedRemoveInput = input;
-        return {
-          playlistId: "p1",
-          requested: 2,
-          removed: 1,
-          failures: [{ videoId: "v2", reason: "not-found-in-playlist" as const }],
-        };
-      };
+test("CLI playlist add/remove commands forward channel and return stable partial-result envelopes", async () => {
+  const core = makeCoreStub();
+  const stdout: string[] = [];
+  let capturedAddInput: unknown;
+  let capturedRemoveInput: unknown;
+  core.addVideosToPlaylist = async (input: unknown) => {
+    capturedAddInput = input;
+    return {
+      playlistId: "p1",
+      attempted: 2,
+      added: 1,
+      failures: [{ videoId: "v2", reason: "already-present" as const }],
+    };
+  };
+  core.removeVideosFromPlaylist = async (input: unknown) => {
+    capturedRemoveInput = input;
+    return {
+      playlistId: "p1",
+      requested: 2,
+      removed: 1,
+      failures: [{ videoId: "v2", reason: "not-found-in-playlist" as const }],
+    };
+  };
 
-      const addExitCode = await runCliCommand({
-        argv: [
-          "playlist",
-          "add",
-          "--confirmed",
-          "--playlistId",
-          "p1",
-          "--expectedChannelId",
-          "UC_ACTIVE",
-          "--videoIds",
-          "v1,v2",
-        ],
+  const addExitCode = await runCliCommand({
+    argv: [
+      "playlist",
+      "add",
+      "--confirmed",
+      "--playlistId",
+      "p1",
+      "--expectedChannelId",
+      "UC_ACTIVE",
+      "--videoIds",
+      "v1,v2",
+    ],
     core,
     auth: makeAuthStub(),
     writeStdout: (line) => stdout.push(line),
   });
 
   const removeExitCode = await runCliCommand({
-        argv: [
-          "playlist",
-          "remove",
-          "--confirmed",
-          "--playlistId",
-          "p1",
-          "--expectedChannelId",
-          "UC_ACTIVE",
-          "--videoIds",
-          "v1,v2",
-        ],
+    argv: [
+      "playlist",
+      "remove",
+      "--confirmed",
+      "--playlistId",
+      "p1",
+      "--expectedChannelId",
+      "UC_ACTIVE",
+      "--videoIds",
+      "v1,v2",
+    ],
     core,
     auth: makeAuthStub(),
     writeStdout: (line) => stdout.push(line),
@@ -1721,16 +1724,16 @@ test("CLI playlist delete fails closed on unresolved channel with stable error d
   assert.equal(addExitCode, 0);
   assert.equal(removeExitCode, 0);
   assert.deepEqual(capturedAddInput, {
-credentialRef: { userId: "active-user" },
-playlistId: "p1",
-expectedChannelId: "UC_ACTIVE",
-videoIds: ["v1", "v2"],
+    credentialRef: { userId: "active-user" },
+    playlistId: "p1",
+    expectedChannelId: "UC_ACTIVE",
+    videoIds: ["v1", "v2"],
   });
   assert.deepEqual(capturedRemoveInput, {
-credentialRef: { userId: "active-user" },
-playlistId: "p1",
-expectedChannelId: "UC_ACTIVE",
-videoIds: ["v1", "v2"],
+    credentialRef: { userId: "active-user" },
+    playlistId: "p1",
+    expectedChannelId: "UC_ACTIVE",
+    videoIds: ["v1", "v2"],
   });
 
   const addEnvelope = JSON.parse(stdout[0] ?? "{}");
@@ -1757,50 +1760,50 @@ videoIds: ["v1", "v2"],
   });
 });
 
-    test("CLI playlist add/remove require expectedChannelId before core invocation", async () => {
-      const stderr: string[] = [];
-      let coreCalled = false;
-      const core = makeCoreStub();
-      core.addVideosToPlaylist = async () => {
-        coreCalled = true;
-        return { playlistId: "p1", attempted: 1, added: 1, failures: [] };
-      };
+test("CLI playlist add/remove require expectedChannelId before core invocation", async () => {
+  const stderr: string[] = [];
+  let coreCalled = false;
+  const core = makeCoreStub();
+  core.addVideosToPlaylist = async () => {
+    coreCalled = true;
+    return { playlistId: "p1", attempted: 1, added: 1, failures: [] };
+  };
 
-      const exitCode = await runCliCommand({
-        argv: [
-          "playlist",
-          "add",
-          "--confirmed",
-          "--playlistId",
-          "p1",
-          "--videoIds",
-          "v1",
-        ],
-        core,
-        auth: makeAuthStub(),
-        writeStderr: (line) => stderr.push(line),
-      });
+  const exitCode = await runCliCommand({
+    argv: [
+      "playlist",
+      "add",
+      "--confirmed",
+      "--playlistId",
+      "p1",
+      "--videoIds",
+      "v1",
+    ],
+    core,
+    auth: makeAuthStub(),
+    writeStderr: (line) => stderr.push(line),
+  });
 
-      assert.equal(exitCode, 1);
-      assert.equal(coreCalled, false);
-      const envelope = JSON.parse(stderr[0] ?? "{}");
-      assert.equal(envelope.error.code, "validation_failed");
-      assert.match(envelope.error.message, /Missing required --expectedChannelId/);
-    });
+  assert.equal(exitCode, 1);
+  assert.equal(coreCalled, false);
+  const envelope = JSON.parse(stderr[0] ?? "{}");
+  assert.equal(envelope.error.code, "validation_failed");
+  assert.match(envelope.error.message, /Missing required --expectedChannelId/);
+});
 
-    test("CLI playlist commands fail with non-zero exit on missing required flags", async () => {
+test("CLI playlist commands fail with non-zero exit on missing required flags", async () => {
   const stderr: string[] = [];
 
   const exitCode = await runCliCommand({
-        argv: [
-          "playlist",
-          "add",
-          "--confirmed",
-          "--playlistId",
-          "p1",
-          "--expectedChannelId",
-          "UC_ACTIVE",
-        ],
+    argv: [
+      "playlist",
+      "add",
+      "--confirmed",
+      "--playlistId",
+      "p1",
+      "--expectedChannelId",
+      "UC_ACTIVE",
+    ],
     core: makeCoreStub(),
     auth: makeAuthStub(),
     writeStderr: (line) => stderr.push(line),

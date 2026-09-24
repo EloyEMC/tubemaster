@@ -57,18 +57,18 @@ export async function listQuotaUsage(
         ? isNull(quotaUsage.scopeId)
         : eq(quotaUsage.scopeId, filter.scopeId),
     );
-      }
-      if (filter.channelId !== undefined) {
-        conditions.push(
-          filter.channelId === null
-            ? isNull(quotaUsage.channelId)
-            : eq(quotaUsage.channelId, filter.channelId),
-        );
-      }
+  }
+  if (filter.channelId !== undefined) {
+    conditions.push(
+      filter.channelId === null
+        ? isNull(quotaUsage.channelId)
+        : eq(quotaUsage.channelId, filter.channelId),
+    );
+  }
 
-      const rows = await db
-        .select()
-        .from(quotaUsage)
+  const rows = await db
+    .select()
+    .from(quotaUsage)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(asc(quotaUsage.recordedAt), asc(quotaUsage.id));
 

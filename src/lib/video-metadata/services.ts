@@ -56,13 +56,13 @@ type ServiceDependencies = {
       proposal: MetadataSyncProposal;
     }): Promise<void>;
   };
-        transcriptProvider: {
-        getTranscript(args: {
-          credentials: ResolvedCredentials;
-          videoId: string;
-          operationId?: string;
-          quotaAccountant?: QuotaAccountant;
-          channelId?: string;
+  transcriptProvider: {
+    getTranscript(args: {
+      credentials: ResolvedCredentials;
+      videoId: string;
+      operationId?: string;
+      quotaAccountant?: QuotaAccountant;
+      channelId?: string;
     }): Promise<TranscriptResult>;
   };
   metadataGenerator: {
@@ -493,7 +493,7 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
         safeAccount(accountant, {
           operationId,
           operation: "videos.update",
-          channelId: guardrail.expectedChannelId
+          channelId: guardrail.expectedChannelId,
         });
         await deps.youtubeApi.applyMetadataProposal({
           credentials,

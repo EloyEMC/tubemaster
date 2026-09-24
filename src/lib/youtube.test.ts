@@ -150,7 +150,9 @@ test("listPlaylistsForAuthenticated accounts every attempted playlist page", asy
 
   assert.equal(result.length, 2);
   assert.deepEqual(
-    accountant.entries().map(({ operationId, operation }) => [operationId, operation]),
+    accountant
+      .entries()
+      .map(({ operationId, operation }) => [operationId, operation]),
     [
       ["playlist-read-operation", "playlists.list"],
       ["playlist-read-operation", "playlists.list"],
@@ -179,7 +181,9 @@ test("listPlaylistItemIdsByVideo accounts a failed page attempt", async () => {
   );
 
   assert.deepEqual(
-    accountant.entries().map(({ operationId, operation }) => [operationId, operation]),
+    accountant
+      .entries()
+      .map(({ operationId, operation }) => [operationId, operation]),
     [["playlist-items-operation", "playlistItems.list"]],
   );
 });
