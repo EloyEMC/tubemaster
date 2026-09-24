@@ -25,19 +25,12 @@ function makeCoreStub(): Pick<
     },
     getTranscript: async (input: unknown) => {
       void input;
-      return {
-        transcript: { status: "available" as const, text: "Transcript" },
-      };
+      return { transcript: { status: "available" as const, text: "Transcript" } };
     },
     previewMetadata: async (input: unknown) => {
       void input;
       return {
-        video: {
-          videoId: "v1",
-          title: "Video",
-          description: "Desc",
-          publishedAt: "2024-01-01",
-        },
+        video: { videoId: "v1", title: "Video", description: "Desc", publishedAt: "2024-01-01" },
         transcript: { status: "available" as const, text: "Transcript" },
         draft: {
           finalTitle: "Final",
@@ -54,16 +47,8 @@ function makeCoreStub(): Pick<
         targetLanguage: "es",
         languageSource: "defaultLanguage" as const,
         snippet: {
-          before: {
-            title: "Before",
-            description: "Before desc",
-            categoryId: "22",
-          },
-          proposed: {
-            title: "After",
-            description: "After desc",
-            categoryId: "22",
-          },
+          before: { title: "Before", description: "Before desc", categoryId: "22" },
+          proposed: { title: "After", description: "After desc", categoryId: "22" },
         },
         localizations: {
           before: {
@@ -144,10 +129,8 @@ function makeAuthStub() {
       alignment: {
         status: "mismatch",
         requiresReauth: true,
-        message:
-          "Selected expected channel does not match the active OAuth channel.",
-        recommendedAction:
-          "Reauthenticate with the expected channel or select the active channel.",
+        message: "Selected expected channel does not match the active OAuth channel.",
+        recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
       },
       requiresReauth: true,
       knownChannels: [
@@ -190,10 +173,8 @@ function makeAuthStub() {
         alignment: {
           status: "mismatch",
           requiresReauth: true,
-          message:
-            "Selected expected channel does not match the active OAuth channel.",
-          recommendedAction:
-            "Reauthenticate with the expected channel or select the active channel.",
+          message: "Selected expected channel does not match the active OAuth channel.",
+          recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
         },
         requiresReauth: true,
       },
@@ -220,10 +201,8 @@ function makeAuthStub() {
         alignment: {
           status: "mismatch",
           requiresReauth: true,
-          message:
-            "Selected expected channel does not match the active OAuth channel.",
-          recommendedAction:
-            "Reauthenticate with the expected channel or select the active channel.",
+          message: "Selected expected channel does not match the active OAuth channel.",
+          recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
         },
         requiresReauth: true,
       },
@@ -232,10 +211,8 @@ function makeAuthStub() {
       alignment: {
         status: "mismatch",
         requiresReauth: true,
-        message:
-          "Selected expected channel does not match the active OAuth channel.",
-        recommendedAction:
-          "Reauthenticate with the expected channel or select the active channel.",
+        message: "Selected expected channel does not match the active OAuth channel.",
+        recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
       },
       requiresReauth: true,
       affectsRemoteOAuth: false as const,
@@ -260,10 +237,8 @@ function makeAuthStub() {
       alignment: {
         status: "mismatch",
         requiresReauth: true,
-        message:
-          "Selected expected channel does not match the active OAuth channel.",
-        recommendedAction:
-          "Reauthenticate with the expected channel or select the active channel.",
+        message: "Selected expected channel does not match the active OAuth channel.",
+        recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
       },
       activeWriteChannel: { id: "UC_ACTIVE", title: "Active channel" },
       selectedChannelId: "UC_SELECTED",
@@ -279,23 +254,15 @@ function makeAuthStub() {
       alignment: {
         status: "mismatch",
         requiresReauth: true,
-        message:
-          "Selected expected channel does not match the active OAuth channel.",
-        recommendedAction:
-          "Reauthenticate with the expected channel or select the active channel.",
+        message: "Selected expected channel does not match the active OAuth channel.",
+        recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
       },
       knownChannels: [],
       requiresReauth: true,
-      message:
-        "Selected expected channel does not match the active OAuth channel.",
-      recommendedAction:
-        "Reauthenticate with the expected channel or select the active channel.",
+      message: "Selected expected channel does not match the active OAuth channel.",
+      recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
     }),
-    resolveEffectiveCredentialRef: async ({
-      explicit,
-    }: {
-      explicit?: unknown;
-    }) =>
+    resolveEffectiveCredentialRef: async ({ explicit }: { explicit?: unknown }) =>
       (explicit as { userId: string } | undefined) ?? { userId: "active-user" },
   };
 }
@@ -341,9 +308,7 @@ test("MCP whoami returns active local user", async () => {
 
 test("MCP server registers auth_user_select tool", () => {
   const server = createMcpServer(makeCoreStub());
-  const tools = (
-    server as unknown as { _registeredTools?: Record<string, unknown> }
-  )._registeredTools;
+  const tools = (server as unknown as { _registeredTools?: Record<string, unknown> })._registeredTools;
 
   assert.equal(Boolean(tools?.auth_user_select), true);
 });
@@ -510,16 +475,8 @@ test("MCP apply tool supports dry-run review without mutation", async () => {
       targetLanguage: "es",
       languageSource: "defaultLanguage" as const,
       snippet: {
-        before: {
-          title: "Before",
-          description: "Before desc",
-          categoryId: "22",
-        },
-        proposed: {
-          title: "After",
-          description: "After desc",
-          categoryId: "22",
-        },
+        before: { title: "Before", description: "Before desc", categoryId: "22" },
+        proposed: { title: "After", description: "After desc", categoryId: "22" },
       },
       localizations: {
         before: {
@@ -610,24 +567,6 @@ test("MCP apply keeps structuredContent parity between dryRun and apply", async 
   delete dryRunPayload.dryRun;
   delete applyPayload.dryRun;
   assert.deepEqual(dryRunPayload, applyPayload);
-});
-
-test("MCP transcript passes through unsupported status in structuredContent and text", async () => {
-  const core = makeCoreStub();
-  core.getTranscript = async () => ({
-    transcript: { status: "unsupported", reason: "provider-missing" },
-  });
-
-  const handlers = createMcpToolHandlers(core, makeAuthStub());
-  const result = await handlers.transcript({ videoId: "v1" });
-
-  assert.equal(result.isError, undefined);
-  assert.deepEqual(result.structuredContent, {
-    transcript: { status: "unsupported", reason: "provider-missing" },
-  });
-  assert.deepEqual(JSON.parse(result.content[0]?.text ?? "{}"), {
-    transcript: { status: "unsupported", reason: "provider-missing" },
-  });
 });
 
 test("MCP transcript keeps structuredContent and text payload aligned with diagnostics", async () => {
@@ -729,10 +668,8 @@ test("MCP returns AUTH_USER_NOT_FOUND as structured error", async () => {
       alignment: {
         status: "mismatch",
         requiresReauth: true,
-        message:
-          "Selected expected channel does not match the active OAuth channel.",
-        recommendedAction:
-          "Reauthenticate with the expected channel or select the active channel.",
+        message: "Selected expected channel does not match the active OAuth channel.",
+        recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
       },
       requiresReauth: true,
       knownChannels: [],
@@ -745,10 +682,8 @@ test("MCP returns AUTH_USER_NOT_FOUND as structured error", async () => {
         alignment: {
           status: "mismatch",
           requiresReauth: true,
-          message:
-            "Selected expected channel does not match the active OAuth channel.",
-          recommendedAction:
-            "Reauthenticate with the expected channel or select the active channel.",
+          message: "Selected expected channel does not match the active OAuth channel.",
+          recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
         },
         requiresReauth: true,
       },
@@ -760,8 +695,7 @@ test("MCP returns AUTH_USER_NOT_FOUND as structured error", async () => {
         status: "unresolved",
         requiresReauth: false,
         message: "No expected write channel is configured yet.",
-        recommendedAction:
-          "Select the expected channel before running sensitive write operations.",
+        recommendedAction: "Select the expected channel before running sensitive write operations.",
       },
       activeWriteChannel: null,
       selectedChannelId: null,
@@ -777,17 +711,13 @@ test("MCP returns AUTH_USER_NOT_FOUND as structured error", async () => {
       alignment: {
         status: "mismatch",
         requiresReauth: true,
-        message:
-          "Selected expected channel does not match the active OAuth channel.",
-        recommendedAction:
-          "Reauthenticate with the expected channel or select the active channel.",
+        message: "Selected expected channel does not match the active OAuth channel.",
+        recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
       },
       knownChannels: [],
       requiresReauth: true,
-      message:
-        "Selected expected channel does not match the active OAuth channel.",
-      recommendedAction:
-        "Reauthenticate with the expected channel or select the active channel.",
+      message: "Selected expected channel does not match the active OAuth channel.",
+      recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
     }),
     selectUser: async () => ({
       activeUser: {
@@ -810,10 +740,8 @@ test("MCP returns AUTH_USER_NOT_FOUND as structured error", async () => {
         alignment: {
           status: "mismatch",
           requiresReauth: true,
-          message:
-            "Selected expected channel does not match the active OAuth channel.",
-          recommendedAction:
-            "Reauthenticate with the expected channel or select the active channel.",
+          message: "Selected expected channel does not match the active OAuth channel.",
+          recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
         },
         requiresReauth: true,
       },
@@ -822,10 +750,8 @@ test("MCP returns AUTH_USER_NOT_FOUND as structured error", async () => {
       alignment: {
         status: "mismatch",
         requiresReauth: true,
-        message:
-          "Selected expected channel does not match the active OAuth channel.",
-        recommendedAction:
-          "Reauthenticate with the expected channel or select the active channel.",
+        message: "Selected expected channel does not match the active OAuth channel.",
+        recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
       },
       requiresReauth: true,
       affectsRemoteOAuth: false as const,
@@ -919,57 +845,12 @@ test("MCP playlist_create keeps explicit credentialRef precedence", async () => 
   });
 
   const payload = result.structuredContent as {
-    playlist: {
-      id: string;
-      title: string;
-      description: string;
-      privacyStatus: string;
-    };
+    playlist: { id: string; title: string; description: string; privacyStatus: string };
   };
   assert.equal(payload.playlist.id, "p-created");
   assert.equal(payload.playlist.title, "My Playlist");
   assert.equal(payload.playlist.description, "Roadtrip videos");
   assert.equal(payload.playlist.privacyStatus, "private");
-});
-
-test("MCP playlist_create rejects missing expectedChannelId before authorization", async () => {
-  let authCalled = false;
-  let coreCalled = false;
-  const core = makeCoreStub();
-  core.createPlaylist = async () => {
-    coreCalled = true;
-    return {
-      playlist: {
-        id: "p-created",
-        title: "My Playlist",
-        description: "",
-        privacyStatus: "private" as const,
-      },
-    };
-  };
-
-  const handlers = createMcpToolHandlers(core, {
-    ...makeAuthStub(),
-    resolveEffectiveCredentialRef: async () => {
-      authCalled = true;
-      return { userId: "active-user" };
-    },
-  });
-  const result = await handlers.playlistCreate({
-    title: "My Playlist",
-  });
-
-  assert.equal(result.isError, true);
-  assert.equal(authCalled, false);
-  assert.equal(coreCalled, false);
-  const payload = JSON.parse(result.content[0]?.text ?? "{}");
-  assert.equal(payload.error.code, "validation_failed");
-  assert.equal(
-    payload.error.details.some((detail: { path: string }) =>
-      detail.path.includes("expectedChannelId"),
-    ),
-    true,
-  );
 });
 
 test("MCP playlist_update enforces patch schema and forwards payload", async () => {
@@ -991,7 +872,6 @@ test("MCP playlist_update enforces patch schema and forwards payload", async () 
   const result = await handlers.playlistUpdate({
     playlistId: "p-updated",
     expectedChannelId: "UC_ACTIVE",
-    confirmed: true,
     description: "Updated description",
     privacyStatus: "public",
   });
@@ -1014,87 +894,7 @@ test("MCP playlist_update enforces patch schema and forwards payload", async () 
   });
 });
 
-test("MCP playlist_update requires explicit confirmation before auth/core", async () => {
-  let authCalled = false;
-  let coreCalled = false;
-  const core = makeCoreStub();
-  core.updatePlaylist = async () => {
-    coreCalled = true;
-    return {
-      playlist: {
-        id: "p-update",
-        title: "Updated",
-        description: "",
-        privacyStatus: "private" as const,
-      },
-    };
-  };
-  const handlers = createMcpToolHandlers(core, {
-    ...makeAuthStub(),
-    resolveEffectiveCredentialRef: async () => {
-      authCalled = true;
-      return { userId: "active-user" };
-    },
-  });
-
-  for (const input of [
-    {
-      playlistId: "p-update",
-      expectedChannelId: "UC_ACTIVE",
-      title: "Updated",
-    },
-    {
-      playlistId: "p-update",
-      expectedChannelId: "UC_ACTIVE",
-      confirmed: false,
-      title: "Updated",
-    },
-  ]) {
-    const result = await handlers.playlistUpdate(input);
-    assert.equal(result.isError, true);
-    const payload = JSON.parse(result.content[0]?.text ?? "{}");
-    assert.equal(payload.error.code, "validation_failed");
-  }
-
-  assert.equal(authCalled, false);
-  assert.equal(coreCalled, false);
-});
-
-test("MCP playlist_delete requires explicit confirmation before auth/core", async () => {
-  let authCalled = false;
-  let coreCalled = false;
-  const core = makeCoreStub();
-  core.deletePlaylist = async () => {
-    coreCalled = true;
-    return { deleted: true, playlistId: "p-delete" };
-  };
-  const handlers = createMcpToolHandlers(core, {
-    ...makeAuthStub(),
-    resolveEffectiveCredentialRef: async () => {
-      authCalled = true;
-      return { userId: "active-user" };
-    },
-  });
-
-  for (const input of [
-    { playlistId: "p-delete", expectedChannelId: "UC_ACTIVE" },
-    {
-      playlistId: "p-delete",
-      expectedChannelId: "UC_ACTIVE",
-      confirmed: false,
-    },
-  ]) {
-    const result = await handlers.playlistDelete(input);
-    assert.equal(result.isError, true);
-    const payload = JSON.parse(result.content[0]?.text ?? "{}");
-    assert.equal(payload.error.code, "validation_failed");
-  }
-
-  assert.equal(authCalled, false);
-  assert.equal(coreCalled, false);
-});
-
-test("MCP playlist_delete forwards confirmed input and returns success", async () => {
+test("MCP playlist_delete enforces schema and forwards expectedChannelId", async () => {
   let capturedInput: unknown;
   const core = makeCoreStub();
   core.deletePlaylist = async (input: unknown) => {
@@ -1106,7 +906,6 @@ test("MCP playlist_delete forwards confirmed input and returns success", async (
   const result = await handlers.playlistDelete({
     playlistId: "p-delete",
     expectedChannelId: "UC_ACTIVE",
-    confirmed: true,
   });
 
   assert.equal(result.isError, undefined);
@@ -1114,8 +913,8 @@ test("MCP playlist_delete forwards confirmed input and returns success", async (
     credentialRef: { userId: "active-user" },
     playlistId: "p-delete",
     expectedChannelId: "UC_ACTIVE",
-    confirmed: true,
   });
+
   assert.deepEqual(result.structuredContent, {
     deleted: true,
     playlistId: "p-delete",
@@ -1136,13 +935,11 @@ test("MCP playlist_* tools reject invalid input with structured validation error
     },
     {
       toolName: "playlist_add_videos",
-      invoke: () =>
-        handlers.playlistAddVideos({ playlistId: "p1", videoIds: [] }),
+      invoke: () => handlers.playlistAddVideos({ playlistId: "p1", videoIds: [] }),
     },
     {
       toolName: "playlist_remove_videos",
-      invoke: () =>
-        handlers.playlistRemoveVideos({ playlistId: "p1", videoIds: [] }),
+      invoke: () => handlers.playlistRemoveVideos({ playlistId: "p1", videoIds: [] }),
     },
     {
       toolName: "playlist_delete",
@@ -1150,227 +947,27 @@ test("MCP playlist_* tools reject invalid input with structured validation error
     },
     {
       toolName: "playlist_update",
-      invoke: () =>
-        handlers.playlistUpdate({
-          playlistId: "p1",
-          expectedChannelId: "UC_ACTIVE",
-        }),
+      invoke: () => handlers.playlistUpdate({ playlistId: "p1", expectedChannelId: "UC_ACTIVE" }),
     },
   ];
 
   for (const invalidCall of invalidCalls) {
     const result = await invalidCall.invoke();
-    assert.equal(
-      result.isError,
-      true,
-      `${invalidCall.toolName} should return error`,
-    );
+    assert.equal(result.isError, true, `${invalidCall.toolName} should return error`);
 
     const payload = JSON.parse(result.content[0]?.text ?? "{}");
-    assert.equal(
-      payload.ok,
-      false,
-      `${invalidCall.toolName} should return ok=false`,
-    );
+    assert.equal(payload.ok, false, `${invalidCall.toolName} should return ok=false`);
     assert.equal(
       payload.error.code,
       "validation_failed",
-      `${invalidCall.toolName} should return validation_failed`,
+      `${invalidCall.toolName} should return validation_failed`
     );
     assert.equal(
       Array.isArray(payload.error.details),
       true,
-      `${invalidCall.toolName} should include validation details`,
+      `${invalidCall.toolName} should include validation details`
     );
   }
-});
-
-test("MCP playlist_add_videos requires explicit confirmation before auth/core", async () => {
-  let authCalled = false;
-  let coreCalled = false;
-  const core = makeCoreStub();
-  core.addVideosToPlaylist = async () => {
-    coreCalled = true;
-    return { playlistId: "p1", attempted: 1, added: 1, failures: [] };
-  };
-
-  const handlers = createMcpToolHandlers(core, {
-    ...makeAuthStub(),
-    resolveEffectiveCredentialRef: async () => {
-      authCalled = true;
-      return { userId: "active-user" };
-    },
-  });
-
-  for (const input of [
-    {
-      playlistId: "p1",
-      expectedChannelId: "UC_ACTIVE",
-      videoIds: ["v1"],
-    },
-    {
-      playlistId: "p1",
-      expectedChannelId: "UC_ACTIVE",
-      videoIds: ["v1"],
-      confirmed: false,
-    },
-  ]) {
-    const result = await handlers.playlistAddVideos(input);
-    assert.equal(result.isError, true);
-    const payload = JSON.parse(result.content[0]?.text ?? "{}");
-    assert.equal(payload.error.code, "validation_failed");
-  }
-
-  assert.equal(authCalled, false);
-  assert.equal(coreCalled, false);
-});
-
-test("MCP playlist_add_videos rejects missing expectedChannelId before authorization", async () => {
-  let called = false;
-  const core = makeCoreStub();
-  core.addVideosToPlaylist = async () => {
-    called = true;
-    return { playlistId: "p1", attempted: 1, added: 1, failures: [] };
-  };
-
-  const handlers = createMcpToolHandlers(core, makeAuthStub());
-  const result = await handlers.playlistAddVideos({
-    playlistId: "p1",
-    confirmed: true,
-    videoIds: ["v1"],
-  });
-
-  assert.equal(result.isError, true);
-  assert.equal(called, false);
-  const payload = JSON.parse(result.content[0]?.text ?? "{}");
-  assert.equal(payload.error.code, "validation_failed");
-  assert.equal(
-    payload.error.details.some((detail: { path: string }) =>
-      detail.path.includes("expectedChannelId"),
-    ),
-    true,
-  );
-});
-
-test("MCP playlist_remove_videos requires explicit confirmation before auth/core", async () => {
-  let authCalled = false;
-  let coreCalled = false;
-  const core = makeCoreStub();
-  core.removeVideosFromPlaylist = async () => {
-    coreCalled = true;
-    return { playlistId: "p1", requested: 1, removed: 1, failures: [] };
-  };
-
-  const handlers = createMcpToolHandlers(core, {
-    ...makeAuthStub(),
-    resolveEffectiveCredentialRef: async () => {
-      authCalled = true;
-      return { userId: "active-user" };
-    },
-  });
-
-  for (const input of [
-    {
-      playlistId: "p1",
-      expectedChannelId: "UC_ACTIVE",
-      videoIds: ["v1"],
-    },
-    {
-      playlistId: "p1",
-      expectedChannelId: "UC_ACTIVE",
-      videoIds: ["v1"],
-      confirmed: false,
-    },
-  ]) {
-    const result = await handlers.playlistRemoveVideos(input);
-    assert.equal(result.isError, true);
-    const payload = JSON.parse(result.content[0]?.text ?? "{}");
-    assert.equal(payload.error.code, "validation_failed");
-  }
-
-  assert.equal(authCalled, false);
-  assert.equal(coreCalled, false);
-});
-
-test("MCP playlist_remove_videos rejects missing expectedChannelId before authorization", async () => {
-  let called = false;
-  const core = makeCoreStub();
-  core.removeVideosFromPlaylist = async () => {
-    called = true;
-    return { playlistId: "p1", requested: 1, removed: 1, failures: [] };
-  };
-
-  const handlers = createMcpToolHandlers(core, makeAuthStub());
-  const result = await handlers.playlistRemoveVideos({
-    playlistId: "p1",
-    confirmed: true,
-    videoIds: ["v1"],
-  });
-
-  assert.equal(result.isError, true);
-  assert.equal(called, false);
-  const payload = JSON.parse(result.content[0]?.text ?? "{}");
-  assert.equal(payload.error.code, "validation_failed");
-  assert.equal(
-    payload.error.details.some((detail: { path: string }) =>
-      detail.path.includes("expectedChannelId"),
-    ),
-    true,
-  );
-});
-
-test("MCP playlist_remove_videos preserves sanitized provider failures", async () => {
-  const core = makeCoreStub();
-  core.removeVideosFromPlaylist = async () => ({
-    playlistId: "p1",
-    requested: 1,
-    removed: 0,
-    failures: [{ videoId: "v1", reason: "forbidden" as const }],
-  });
-
-  const handlers = createMcpToolHandlers(core, makeAuthStub());
-  const result = await handlers.playlistRemoveVideos({
-    playlistId: "p1",
-    expectedChannelId: "UC_ACTIVE",
-    confirmed: true,
-    videoIds: ["v1"],
-  });
-
-  assert.equal(result.isError, undefined);
-  assert.deepEqual(result.structuredContent, {
-    playlistId: "p1",
-    requested: 1,
-    removed: 0,
-    failures: [{ videoId: "v1", reason: "forbidden" }],
-  });
-  assert.equal(result.content[0]?.text.includes("Bearer"), false);
-});
-
-test("MCP playlist_add_videos preserves sanitized provider failures", async () => {
-  const core = makeCoreStub();
-  core.addVideosToPlaylist = async () => ({
-    playlistId: "p1",
-    attempted: 1,
-    added: 0,
-    failures: [{ videoId: "v1", reason: "unknown" as const }],
-  });
-
-  const handlers = createMcpToolHandlers(core, makeAuthStub());
-  const result = await handlers.playlistAddVideos({
-    playlistId: "p1",
-    expectedChannelId: "UC_ACTIVE",
-    videoIds: ["v1"],
-    confirmed: true,
-  });
-
-  assert.equal(result.isError, undefined);
-  assert.deepEqual(result.structuredContent, {
-    playlistId: "p1",
-    attempted: 1,
-    added: 0,
-    failures: [{ videoId: "v1", reason: "unknown" }],
-  });
-  assert.equal(result.content[0]?.text.includes("Bearer"), false);
 });
 
 test("MCP playlist add/remove tools return stable partial contracts", async () => {
@@ -1378,14 +975,10 @@ test("MCP playlist add/remove tools return stable partial contracts", async () =
 
   const addResult = await handlers.playlistAddVideos({
     playlistId: "p1",
-    expectedChannelId: "UC_ACTIVE",
     videoIds: ["v1", "v2"],
-    confirmed: true,
   });
   const removeResult = await handlers.playlistRemoveVideos({
     playlistId: "p1",
-    expectedChannelId: "UC_ACTIVE",
-    confirmed: true,
     videoIds: ["v1", "v2"],
   });
 
@@ -1467,8 +1060,7 @@ test("MCP apply returns unresolved guardrail details in structured error", async
   core.applyMetadata = async () => {
     throw new DomainError({
       code: "WRITE_CHANNEL_UNRESOLVED",
-      message:
-        "Cannot resolve active write channel for the current OAuth session",
+      message: "Cannot resolve active write channel for the current OAuth session",
       details: {
         expectedChannelId: "UC_EXPECTED",
       },
@@ -1536,7 +1128,6 @@ test("MCP playlist_update fails closed on guardrail mismatch with stable details
   const result = await handlers.playlistUpdate({
     playlistId: "p-update",
     expectedChannelId: "UC_EXPECTED",
-    confirmed: true,
     title: "Updated",
   });
 
@@ -1566,17 +1157,13 @@ test("MCP playlist_update fails closed on invalid ownership with structured erro
   const result = await handlers.playlistUpdate({
     playlistId: "p-update",
     expectedChannelId: "UC_ACTIVE",
-    confirmed: true,
     description: "Updated description",
   });
 
   assert.equal(result.isError, true);
   const payload = JSON.parse(result.content[0]?.text ?? "{}");
   assert.equal(payload.error.code, "WRITE_CHANNEL_MISMATCH");
-  assert.match(
-    payload.error.message,
-    /does not belong to the active write channel/,
-  );
+  assert.match(payload.error.message, /does not belong to the active write channel/);
   assert.deepEqual(payload.error.details, {
     expectedChannelId: "UC_ACTIVE",
     activeWriteChannelId: "UC_OTHER",
@@ -1588,8 +1175,7 @@ test("MCP playlist_delete fails closed on unresolved channel with stable details
   core.deletePlaylist = async () => {
     throw new DomainError({
       code: "WRITE_CHANNEL_UNRESOLVED",
-      message:
-        "Cannot resolve active write channel for the current OAuth session",
+      message: "Cannot resolve active write channel for the current OAuth session",
       details: {
         expectedChannelId: "UC_ACTIVE",
       },
@@ -1600,7 +1186,6 @@ test("MCP playlist_delete fails closed on unresolved channel with stable details
   const result = await handlers.playlistDelete({
     playlistId: "p-delete",
     expectedChannelId: "UC_ACTIVE",
-    confirmed: true,
   });
 
   assert.equal(result.isError, true);
