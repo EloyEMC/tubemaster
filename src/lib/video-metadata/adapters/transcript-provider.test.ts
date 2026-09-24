@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ResolvedCredentials } from "../contracts";
-import {
-  createTranscriptProvider,
-  type TranscriptProviderDeps,
-} from "./transcript-provider";
-import { InMemoryQuotaAccountant } from "../../quota/accountant";
+import { createTranscriptProvider } from "./transcript-provider";
 
 function makeCredentials(): ResolvedCredentials {
   return {
@@ -18,10 +14,8 @@ function makeCredentials(): ResolvedCredentials {
 }
 
 type TranscriptProviderStubs = {
-  list: () => Promise<{
-    data: { items?: Array<{ id?: string; snippet?: { language?: string } }> };
-  }>;
-  download: () => Promise<{ data: ArrayBuffer | Buffer | string }>;
+  list: () => Promise<{ data: { items?: Array<{ id?: string; snippet?: { language?: string } }> } }>;
+  download: (args: { id: string; tfmt: "srt" }) => Promise<{ data: ArrayBuffer | Buffer | string }>;
 };
 
 function makeProvider(stubs: TranscriptProviderStubs) {
@@ -33,60 +27,261 @@ function makeProvider(stubs: TranscriptProviderStubs) {
     createYoutubeClient: () => ({
       captions: {
         list: async () => stubs.list(),
-        download: async () => stubs.download(),
+        download: async (args) => stubs.download(args),
       },
     }),
   });
 }
 
-test("transcript provider accounts list and download attempts under one operation", async () => {
-  const accountant = new InMemoryQuotaAccountant();
-  let downloads = 0;
-  const provider = createTranscriptProvider({
-    provider: "youtube-captions",
-    operationIdFactory: () => "transcript-operation",
-    quotaAccountant: accountant,
-    createOAuthClient: () => ({ setCredentials: () => undefined }),
-    createYoutubeClient: () => ({
-      captions: {
-        list: async () => ({ data: { items: [{ id: "caption-1" }] } }),
-        download: async () => {
-          downloads += 1;
-          throw new Error("download failed");
+    test("transcript provider uses the first injected provider when it succeeds", async () => {
+      let firstCalls = 0;
+      let secondCalls = 0;
+      const provider = createTranscriptProvider({
+        providers: [
+          {
+            getTranscript: async () => {
+              firstCalls += 1;
+              return { status: "available", text: "first transcript" };
+            },
+          },
+          {
+            getTranscript: async () => {
+              secondCalls += 1;
+              return { status: "available", text: "second transcript" };
+            },
+          },
+        ],
+      });
+
+      const result = await provider.getTranscript({
+        credentials: makeCredentials(),
+        videoId: "video-1",
+      });
+
+      assert.deepEqual(result, { status: "available", text: "first transcript" });
+      assert.equal(firstCalls, 1);
+      assert.equal(secondCalls, 0);
+    });
+
+    test("transcript provider falls back only after an eligible unavailable result", async () => {
+      const calls: string[] = [];
+      const provider = createTranscriptProvider({
+        providers: [
+          {
+            getTranscript: async () => {
+              calls.push("first");
+              return {
+                status: "unavailable",
+                reason: "no-captions",
+                diagnostic: {
+                  stage: "captions-list",
+                  retriable: false,
+                },
+              };
+            },
+          },
+          {
+            getTranscript: async () => {
+              calls.push("second");
+              return { status: "available", text: "fallback transcript" };
+            },
+          },
+        ],
+      });
+
+      const result = await provider.getTranscript({
+        credentials: makeCredentials(),
+        videoId: "video-1",
+      });
+
+      assert.deepEqual(result, { status: "available", text: "fallback transcript" });
+      assert.deepEqual(calls, ["first", "second"]);
+    });
+
+    test("transcript provider preserves the first diagnostic when all eligible providers fail", async () => {
+      const original = {
+        status: "unavailable" as const,
+        reason: "captions-not-downloadable" as const,
+        diagnostic: {
+          stage: "captions-download" as const,
+          httpStatus: 403,
+          apiReason: "forbidden",
+          retriable: false,
         },
-      },
-    }),
-  } satisfies TranscriptProviderDeps);
+      };
+      const provider = createTranscriptProvider({
+        providers: [
+          { getTranscript: async () => original },
+          { getTranscript: async () => ({ status: "unavailable", reason: "no-captions" }) },
+        ],
+      });
 
-  const result = await provider.getTranscript({
-    credentials: makeCredentials(),
-    videoId: "video-1",
-  });
+      const result = await provider.getTranscript({
+        credentials: makeCredentials(),
+        videoId: "video-1",
+      });
 
-  assert.equal(result.status, "unavailable");
-  assert.equal(downloads, 1);
-  assert.deepEqual(
-    accountant.entries().map(({ operationId, operation, estimatedUnits }) => ({
-      operationId,
-      operation,
-      estimatedUnits,
-    })),
-    [
-      {
-        operationId: "transcript-operation",
-        operation: "captions.list",
-        estimatedUnits: 50,
-      },
-      {
-        operationId: "transcript-operation",
-        operation: "captions.download",
-        estimatedUnits: 200,
-      },
-    ],
-  );
-});
+      assert.deepEqual(result, original);
+    });
 
-test("transcript provider maps empty captions list to no-captions", async () => {
+    test("transcript provider does not fall back after a non-eligible failure", async () => {
+      let secondCalls = 0;
+      const provider = createTranscriptProvider({
+        providers: [
+          {
+            getTranscript: async () => ({
+              status: "unavailable",
+              reason: "rate-limited",
+              diagnostic: { stage: "captions-list", retriable: true },
+            }),
+          },
+          {
+            getTranscript: async () => {
+              secondCalls += 1;
+              return { status: "available", text: "must not be used" };
+            },
+          },
+        ],
+      });
+
+      const result = await provider.getTranscript({
+        credentials: makeCredentials(),
+        videoId: "video-1",
+      });
+
+      assert.equal(result.status, "unavailable");
+      assert.equal(secondCalls, 0);
+    });
+
+    test("transcript provider returns unsupported when no providers are configured", async () => {
+      const provider = createTranscriptProvider({ providers: [] });
+
+      const result = await provider.getTranscript({
+        credentials: makeCredentials(),
+        videoId: "video-1",
+      });
+
+      assert.deepEqual(result, { status: "unsupported", reason: "provider-missing" });
+    });
+
+    test("transcript provider invokes each provider at most once in deterministic order", async () => {
+      const calls: string[] = [];
+      const provider = createTranscriptProvider({
+        providers: [
+          {
+            getTranscript: async () => {
+              calls.push("first");
+              return { status: "unsupported", reason: "provider-missing" };
+            },
+          },
+          {
+            getTranscript: async () => {
+              calls.push("second");
+              return { status: "unavailable", reason: "no-captions" };
+            },
+          },
+          {
+            getTranscript: async () => {
+              calls.push("third");
+              return { status: "available", text: "third transcript" };
+            },
+          },
+        ],
+      });
+
+      await provider.getTranscript({ credentials: makeCredentials(), videoId: "video-1" });
+      assert.deepEqual(calls, ["first", "second", "third"]);
+    });
+
+    test("transcript provider downloads the single valid caption track", async () => {
+      const downloadedIds: string[] = [];
+      const provider = makeProvider({
+        list: async () => ({
+          data: { items: [{ id: "caption-1", snippet: { language: "es" } }] },
+        }),
+        download: async ({ id }) => {
+          downloadedIds.push(id);
+          return { data: Buffer.from("1\n00:00:00,100 --> 00:00:01,000\nHola", "utf8") };
+        },
+      });
+
+      const result = await provider.getTranscript({
+        credentials: makeCredentials(),
+        videoId: "video-1",
+      });
+
+      assert.deepEqual(result, { status: "available", text: "Hola", language: "es" });
+      assert.deepEqual(downloadedIds, ["caption-1"]);
+    });
+
+    test("transcript provider skips caption tracks without ids before the first valid track", async () => {
+      const downloadedIds: string[] = [];
+      const provider = makeProvider({
+        list: async () => ({
+          data: {
+            items: [
+              { id: "", snippet: { language: "fr" } },
+              { snippet: { language: "fr" } },
+              { id: "caption-2", snippet: { language: "en" } },
+            ],
+          },
+        }),
+        download: async ({ id }) => {
+          downloadedIds.push(id);
+          return { data: Buffer.from("Transcript", "utf8") };
+        },
+      });
+
+      const result = await provider.getTranscript({
+        credentials: makeCredentials(),
+        videoId: "video-1",
+      });
+
+      assert.deepEqual(result, { status: "available", text: "Transcript", language: "en" });
+      assert.deepEqual(downloadedIds, ["caption-2"]);
+    });
+
+    test("transcript provider selects the first valid caption track in response order", async () => {
+      const downloadedIds: string[] = [];
+      const provider = makeProvider({
+        list: async () => ({
+          data: {
+            items: [
+              { id: "caption-first", snippet: { language: "de" } },
+              { id: "caption-second", snippet: { language: "it" } },
+            ],
+          },
+        }),
+        download: async ({ id }) => {
+          downloadedIds.push(id);
+          return { data: Buffer.from("First transcript", "utf8") };
+        },
+      });
+
+      const result = await provider.getTranscript({
+        credentials: makeCredentials(),
+        videoId: "video-1",
+      });
+
+      assert.deepEqual(result, { status: "available", text: "First transcript", language: "de" });
+      assert.deepEqual(downloadedIds, ["caption-first"]);
+    });
+
+    test("transcript provider omits language when the selected track has no language", async () => {
+      const provider = makeProvider({
+        list: async () => ({ data: { items: [{ id: "caption-1" }] } }),
+        download: async () => ({ data: Buffer.from("Transcript", "utf8") }),
+      });
+
+      const result = await provider.getTranscript({
+        credentials: makeCredentials(),
+        videoId: "video-1",
+      });
+
+      assert.deepEqual(result, { status: "available", text: "Transcript" });
+    });
+
+    test("transcript provider maps empty captions list to no-captions", async () => {
   const provider = makeProvider({
     list: async () => ({ data: { items: [] } }),
     download: async () => ({ data: Buffer.from("unused") }),
