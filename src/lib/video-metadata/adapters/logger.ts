@@ -1,21 +1,35 @@
 type LogLevel = "info" | "error";
 
-type LogPayload = {
+export type AuditEvent = {
   event: string;
   context?: Record<string, unknown>;
 };
 
 export type VideoMetadataLogger = {
-  info: (payload: LogPayload) => void;
-  error: (payload: LogPayload) => void;
+  info: (payload: AuditEvent) => void;
+  error: (payload: AuditEvent) => void;
 };
 
-function log(level: LogLevel, payload: LogPayload) {
+const PRIVATE_KEYS =
+  /(?:token|secret|password|credential|authorization|description|transcript|raw.?error|prompt|editorialprompt|providererror|error|message)$/i;
+
+function sanitize(value: unknown, key?: string): unknown {
+  if (key && PRIVATE_KEYS.test(key)) return "[redacted]";
+  if (Array.isArray(value)) return value.map((item) => sanitize(item));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([entryKey, entryValue]) => [entryKey, sanitize(entryValue, entryKey)]),
+    );
+  }
+  return value;
+}
+
+function log(level: LogLevel, payload: AuditEvent) {
   const line = {
     level,
     event: payload.event,
     timestamp: new Date().toISOString(),
-    ...(payload.context ? { context: payload.context } : {}),
+    ...(payload.context ? { context: sanitize(payload.context) } : {}),
   };
 
   process.stderr.write(`${JSON.stringify(line)}\n`);

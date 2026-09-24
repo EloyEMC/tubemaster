@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
 import { z } from "zod";
 import {
   buildGoogleLoopbackAuthUrl,
@@ -142,37 +142,20 @@ export function getDefaultBrowserCommand(
   return { command: "xdg-open", args: [url] };
 }
 
-type BrowserSpawner = (
-  command: string,
-  args: string[],
-  options: {
-    stdio: "ignore";
-    shell: false;
-    detached: true;
-  },
-) => ChildProcess;
-
-export function openBrowser(
-  url: string,
-  spawnBrowser: BrowserSpawner = spawn,
-): Promise<void> {
+function defaultOpenBrowser(url: string) {
   const { command, args } = getDefaultBrowserCommand(process.platform, url);
 
   return new Promise<void>((resolve, reject) => {
-    const child = spawnBrowser(command, args, {
+    const child = spawn(command, args, {
       stdio: "ignore",
       shell: false,
       detached: true,
     });
 
-    child.once("error", reject);
-    child.once("spawn", resolve);
+    child.on("error", reject);
     child.unref();
+    resolve();
   });
-}
-
-function defaultOpenBrowser(url: string) {
-  return openBrowser(url);
 }
 
 function createLoopbackCallbackServer(args: {

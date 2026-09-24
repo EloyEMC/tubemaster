@@ -24,7 +24,6 @@ export const quotaUsage = sqliteTable("youtube_quota_usage", {
   id: text("id").primaryKey(),
   scopeType: text("scope_type").notNull(),
   scopeId: text("scope_id"),
-  channelId: text("channel_id"),
   bucketStart: text("bucket_start").notNull(),
   operation: text("operation").notNull(),
   estimatedUnits: integer("estimated_units").notNull(),
@@ -66,7 +65,6 @@ async function initializeDatabase() {
           id TEXT PRIMARY KEY,
           scope_type TEXT NOT NULL,
           scope_id TEXT,
-          channel_id TEXT,
           bucket_start TEXT NOT NULL,
           operation TEXT NOT NULL,
           estimated_units INTEGER NOT NULL,
@@ -85,27 +83,7 @@ async function initializeDatabase() {
       enabled INTEGER NOT NULL DEFAULT 1,
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
-    CREATE INDEX IF NOT EXISTS youtube_quota_usage_scope_date_operation_idx
-      ON youtube_quota_usage (scope_type, scope_id, bucket_start, operation);
-    -- channel-aware index is created after the additive migration below
-    CREATE INDEX IF NOT EXISTS youtube_quota_usage_operation_id_idx
-      ON youtube_quota_usage (operation_id);
   `);
-
-  // Migration: add quota channel_id if missing (idempotent)
-  try {
-    await rawClient.execute(
-      "ALTER TABLE youtube_quota_usage ADD COLUMN channel_id TEXT",
-    );
-  } catch {
-    // Column already exists
-  }
-
-  // Migration: add channel-aware reporting index (idempotent)
-  await rawClient.execute(`
-            CREATE INDEX IF NOT EXISTS youtube_quota_usage_scope_channel_date_operation_idx
-              ON youtube_quota_usage (scope_type, scope_id, channel_id, bucket_start, operation)
-          `);
 
   // Migration: add selected_channel_id if missing (idempotent)
   try {

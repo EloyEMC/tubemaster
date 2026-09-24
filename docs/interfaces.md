@@ -2,7 +2,7 @@
 
 <- [Back to README](../README.md)
 
-Use this as the operational reference after setup: TubeMaster covers channel workflows across metadata, transcripts, playlists, rules, quota reporting, and automation surfaces. Quota values are observational estimates from recorded operations; they do not enforce or replace YouTube's authoritative quota accounting.
+Use this as the operational reference after setup: TubeMaster covers channel workflows across metadata, transcripts, playlists, rules, and automation surfaces.
 
 ## Web UI (`http://localhost:3000`)
 
@@ -22,9 +22,6 @@ Use this as the operational reference after setup: TubeMaster covers channel wor
   - Create rule (field + match type + target playlist).
   - List/delete rules.
   - Run matching engine (`/api/run`) over recent videos.
-- **Quota usage** (`/dashboard/quota`)
-  - View estimated units and operation counts grouped by day, operation, and operation ID.
-  - Estimates are read-only and observational; they do not block YouTube requests.
 
 ---
 
@@ -66,14 +63,6 @@ npm run cli:video-metadata -- playlist add --playlistId <PLAYLIST_ID> --videoIds
 npm run cli:video-metadata -- playlist remove --playlistId <PLAYLIST_ID> --videoIds <VIDEO1,VIDEO2,...> [--userId <USER_ID>]
 ```
 
-### Quota usage
-
-```bash
-npm run cli:video-metadata -- quota usage [--channelId <CHANNEL_ID>]
-```
-
-`quota usage` uses the active authenticated user and optionally filters by channel. It never accepts a user or scope override and returns the standard JSON envelope with grouped estimated usage.
-
 ---
 
 ## MCP server (`npm run mcp:video-metadata`)
@@ -95,10 +84,8 @@ Key MCP tools:
 - Playlist tools:
   - `playlist_list`, `playlist_create`, `playlist_update`, `playlist_delete`
   - `playlist_add_videos`, `playlist_remove_videos`
-- Quota tool:
-  - `quota_usage` (read-only, optional `channelId`, active-user scope only)
 
-Most tools accept optional `credentialRef`; if omitted, server falls back to active local auth context. `quota_usage` optionally accepts `channelId`, but intentionally does not accept a credential or scope override.
+Most tools accept optional `credentialRef`; if omitted, server falls back to active local auth context.
 
 ---
 
@@ -115,18 +102,9 @@ All routes are App Router handlers and require authenticated session user.
 - `POST /api/video-metadata/apply`
   - body: `{ "videoId": "...", "finalTitle": "...", "description": "...", "expectedChannelId": "UC...", "dryRun": true|false }`
 
-    ### Quota usage API
+### Playlist / video API used by UI
 
-    - `GET /api/quota/usage`
-      - Optional filters: `bucketStart=YYYY-MM-DD`, `operation`, `operationId`, `channelId`.
-      - `channelId` must be a non-empty channel identifier using letters, numbers, `_`, or `-`.
-      - Always scopes results to the authenticated session user; `scopeType` and `scopeId` cannot be supplied by callers.
-      - Returns `401` without a session, `422` for invalid filters, and `500` for repository failures.
-      - Response values are estimated recorded usage, not authoritative remaining YouTube quota.
-
-    ### Playlist / video API used by UI
-
-    - `GET /api/youtube/videos`
+- `GET /api/youtube/videos`
 - `GET /api/youtube/playlists`
 - `POST /api/youtube/create-playlist`
 - `POST /api/youtube/add-to-playlist`
@@ -134,6 +112,12 @@ All routes are App Router handlers and require authenticated session user.
 - `GET /api/youtube/channel-info`
 - `GET|POST|DELETE /api/rules`
 - `POST /api/run`
+
+## Audit events
+
+Metadata, transcript, and playlist operations emit structured lifecycle events to stderr. Each event has a stable operation-specific name ending in `started`, `dry_run`, `success`, or `failure`, plus an `operationId` shared by the operation's events. Where available, events include safe video, playlist, and channel identifiers and write safeguards such as `expectedChannelId` and `dryRun`.
+
+Audit context excludes access and refresh tokens, descriptions, transcript content, and raw provider errors. Logger failures are isolated and cannot change operation results. Storage is currently ephemeral structured stderr; retention and collection are delegated to the host or its log collector. Durable SQLite audit storage is intentionally out of scope until this event model is proven.
 
 -> Next: [docs/troubleshooting.md](./troubleshooting.md)
 

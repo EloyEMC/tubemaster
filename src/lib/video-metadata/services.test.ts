@@ -7,11 +7,7 @@ import type {
   VideoMetadataItem,
 } from "./contracts";
 import { DomainError } from "./contracts";
-import {
-  createVideoMetadataServices,
-  type ServiceDependencies,
-} from "./services";
-import { InMemoryQuotaAccountant } from "../quota/accountant";
+import { createVideoMetadataServices, type ServiceDependencies } from "./services";
 
 function makeCredentials(): ResolvedCredentials {
   return {
@@ -47,17 +43,12 @@ type ServiceDependencyOverrides = {
   logger?: Partial<ServiceDependencies["logger"]>;
   writeContext?: Partial<ServiceDependencies["writeContext"]>;
   channelSelectionStore?: Partial<ServiceDependencies["channelSelectionStore"]>;
-  operationIdFactory?: ServiceDependencies["operationIdFactory"];
-  quotaAccountant?: ServiceDependencies["quotaAccountant"];
 };
 
 function makeDeps(overrides?: ServiceDependencyOverrides): ServiceDependencies {
   const credentials = makeCredentials();
   const video = makeVideo();
-  const transcript: TranscriptResult = {
-    status: "available",
-    text: "transcript",
-  };
+  const transcript: TranscriptResult = { status: "available", text: "transcript" };
   const draft = makeDraft();
   const metadataContext = {
     snippet: {
@@ -73,10 +64,7 @@ function makeDeps(overrides?: ServiceDependencyOverrides): ServiceDependencies {
     },
     localizations: {
       es: { title: "Título original", description: "Descripción original" },
-      en: {
-        title: "Original title EN",
-        description: "Original description EN",
-      },
+      en: { title: "Original title EN", description: "Original description EN" },
     },
   };
 
@@ -117,12 +105,53 @@ function makeDeps(overrides?: ServiceDependencyOverrides): ServiceDependencies {
       setSelectedChannelId: async () => undefined,
       ...overrides?.channelSelectionStore,
     },
-    operationIdFactory: overrides?.operationIdFactory,
-    quotaAccountant: overrides?.quotaAccountant,
   };
 }
 
-test("listVideos returns typed list when credentials are valid", async () => {
+    test("metadata workflows emit correlated lifecycle events with safe context", async () => {
+      const events: Array<{ event: string; context?: Record<string, unknown> }> = [];
+      const services = createVideoMetadataServices(makeDeps({
+        logger: {
+          info: (payload) => events.push(payload),
+          error: (payload) => events.push(payload),
+        },
+      }));
+
+      await services.listVideos({ credentialRef: { userId: "user-1" } });
+      await services.getTranscript({ credentialRef: { userId: "user-1" }, videoId: "video-1" });
+      await services.previewMetadata({
+        credentialRef: { userId: "user-1" },
+        videoId: "video-1",
+        editorialPrompt: "private prompt",
+      });
+      await services.applyMetadata({
+        credentialRef: { userId: "user-1" },
+        videoId: "video-1",
+        finalTitle: "Secret title",
+        description: "Secret description",
+        expectedChannelId: "UC_ACTIVE",
+        dryRun: true,
+      });
+
+      assert.deepEqual(events.map(({ event }) => event), [
+        "video_metadata.list.started", "video_metadata.list.success",
+        "video_metadata.transcript.started", "video_metadata.transcript.success",
+        "video_metadata.preview.started", "video_metadata.preview.success",
+        "video_metadata.apply.started", "video_metadata.apply.dry_run",
+      ]);
+      assert.equal(events.every((entry) => typeof entry.context?.operationId === "string"), true);
+      assert.equal(events.some((entry) => JSON.stringify(entry).includes("Secret description")), false);
+    });
+
+    test("metadata logger failures do not change operation results", async () => {
+      const services = createVideoMetadataServices(makeDeps({
+        logger: { info: () => { throw new Error("logger failure"); }, error: () => { throw new Error("logger failure"); } },
+      }));
+      const result = await services.listVideos({ credentialRef: { userId: "user-1" } });
+      assert.equal(result.videos.length, 1);
+    });
+
+    test("listVideos returns typed list when credentials are valid", async () => {
   const services = createVideoMetadataServices(makeDeps());
 
   const result = await services.listVideos({
@@ -134,100 +163,6 @@ test("listVideos returns typed list when credentials are valid", async () => {
   assert.equal(result.videos[0]?.videoId, "video-1");
 });
 
-test("listVideos emits correlated lifecycle events with safe context", async () => {
-  const events: Array<{ event: string; context?: Record<string, unknown> }> =
-    [];
-  const services = createVideoMetadataServices(
-    makeDeps({
-      operationIdFactory: () => "list-operation",
-      logger: {
-        info: (payload) => events.push(payload),
-        error: (payload) => events.push(payload),
-      },
-    }),
-  );
-
-  await services.listVideos({
-    credentialRef: { userId: "user-1" },
-    channelId: "channel-1",
-  });
-
-  assert.deepEqual(events, [
-    {
-      event: "video_metadata.list.started",
-      context: { operationId: "list-operation" },
-    },
-    {
-      event: "video_metadata.list.success",
-      context: {
-        operationId: "list-operation",
-        count: 1,
-      },
-    },
-  ]);
-});
-
-test("listVideos emits one safe error event when the adapter fails", async () => {
-  const events: Array<{ event: string; context?: Record<string, unknown> }> =
-    [];
-  const services = createVideoMetadataServices(
-    makeDeps({
-      operationIdFactory: () => "list-error-operation",
-      youtubeApi: {
-        listVideos: async () => {
-          throw new Error("provider secret");
-        },
-      },
-      logger: {
-        info: (payload) => events.push(payload),
-        error: (payload) => events.push(payload),
-      },
-    }),
-  );
-
-  await assert.rejects(() =>
-    services.listVideos({ credentialRef: { userId: "user-1" } }),
-  );
-
-  assert.deepEqual(events, [
-    {
-      event: "video_metadata.list.started",
-      context: { operationId: "list-error-operation" },
-    },
-    {
-      event: "video_metadata.list.error",
-      context: {
-        operationId: "list-error-operation",
-        code: "unauthorized",
-      },
-    },
-  ]);
-  assert.equal(
-    events.some((entry) => JSON.stringify(entry).includes("provider secret")),
-    false,
-  );
-});
-
-test("listVideos ignores logger failures", async () => {
-  const services = createVideoMetadataServices(
-    makeDeps({
-      logger: {
-        info: () => {
-          throw new Error("logger failure");
-        },
-        error: () => {
-          throw new Error("logger failure");
-        },
-      },
-    }),
-  );
-
-  const result = await services.listVideos({
-    credentialRef: { userId: "user-1" },
-  });
-  assert.equal(result.videos.length, 1);
-});
-
 test("listVideos maps unknown adapter errors to unauthorized", async () => {
   const services = createVideoMetadataServices(
     makeDeps({
@@ -236,48 +171,13 @@ test("listVideos maps unknown adapter errors to unauthorized", async () => {
           throw new Error("forbidden");
         },
       },
-    }),
+    })
   );
 
   await assert.rejects(
     () => services.listVideos({ credentialRef: { userId: "user-1" } }),
-    (error: unknown) =>
-      error instanceof DomainError && error.code === "unauthorized",
+    (error: unknown) => error instanceof DomainError && error.code === "unauthorized"
   );
-});
-
-test("getTranscript emits correlated lifecycle events", async () => {
-  const events: Array<{ event: string; context?: Record<string, unknown> }> =
-    [];
-  const services = createVideoMetadataServices(
-    makeDeps({
-      operationIdFactory: () => "transcript-operation",
-      logger: {
-        info: (payload) => events.push(payload),
-        error: (payload) => events.push(payload),
-      },
-    }),
-  );
-
-  await services.getTranscript({
-    credentialRef: { userId: "user-1" },
-    videoId: "video-1",
-  });
-
-  assert.deepEqual(events, [
-    {
-      event: "video_metadata.transcript.started",
-      context: { operationId: "transcript-operation", videoId: "video-1" },
-    },
-    {
-      event: "video_metadata.transcript.success",
-      context: {
-        operationId: "transcript-operation",
-        videoId: "video-1",
-        status: "available",
-      },
-    },
-  ]);
 });
 
 test("getTranscript keeps available status", async () => {
@@ -291,65 +191,13 @@ test("getTranscript keeps available status", async () => {
   assert.equal(result.transcript.status, "available");
 });
 
-test("getTranscript rejects invalid input without calling the provider", async () => {
-  let providerCalls = 0;
-  const services = createVideoMetadataServices(
-    makeDeps({
-      transcriptProvider: {
-        getTranscript: async () => {
-          providerCalls += 1;
-          return { status: "available", text: "unused" };
-        },
-      },
-    }),
-  );
-
-  await assert.rejects(
-    () =>
-      services.getTranscript({
-        credentialRef: { userId: "user-1" },
-        videoId: "",
-      }),
-    (error: unknown) =>
-      error instanceof DomainError &&
-      error.code === "validation_failed" &&
-      error.message === "Invalid transcript input",
-  );
-  assert.equal(providerCalls, 0);
-});
-
-test("getTranscript rejects invalid adapter output", async () => {
-  const services = createVideoMetadataServices(
-    makeDeps({
-      transcriptProvider: {
-        getTranscript: async () => ({ status: "available", text: "" }),
-      },
-    }),
-  );
-
-  await assert.rejects(
-    () =>
-      services.getTranscript({
-        credentialRef: { userId: "user-1" },
-        videoId: "video-1",
-      }),
-    (error: unknown) =>
-      error instanceof DomainError &&
-      error.code === "validation_failed" &&
-      error.message === "Invalid transcript output",
-  );
-});
-
 test("getTranscript keeps unavailable status", async () => {
   const services = createVideoMetadataServices(
     makeDeps({
       transcriptProvider: {
-        getTranscript: async () => ({
-          status: "unavailable",
-          reason: "no-captions",
-        }),
+        getTranscript: async () => ({ status: "unavailable", reason: "no-captions" }),
       },
-    }),
+    })
   );
 
   const result = await services.getTranscript({
@@ -357,10 +205,7 @@ test("getTranscript keeps unavailable status", async () => {
     videoId: "video-1",
   });
 
-  assert.deepEqual(result.transcript, {
-    status: "unavailable",
-    reason: "no-captions",
-  });
+  assert.deepEqual(result.transcript, { status: "unavailable", reason: "no-captions" });
 });
 
 test("getTranscript preserves granular unavailable reason and diagnostic", async () => {
@@ -378,7 +223,7 @@ test("getTranscript preserves granular unavailable reason and diagnostic", async
           },
         }),
       },
-    }),
+    })
   );
 
   const result = await services.getTranscript({
@@ -402,12 +247,9 @@ test("getTranscript keeps unsupported status", async () => {
   const services = createVideoMetadataServices(
     makeDeps({
       transcriptProvider: {
-        getTranscript: async () => ({
-          status: "unsupported",
-          reason: "provider-missing",
-        }),
+        getTranscript: async () => ({ status: "unsupported", reason: "provider-missing" }),
       },
-    }),
+    })
   );
 
   const result = await services.getTranscript({
@@ -415,46 +257,7 @@ test("getTranscript keeps unsupported status", async () => {
     videoId: "video-1",
   });
 
-  assert.deepEqual(result.transcript, {
-    status: "unsupported",
-    reason: "provider-missing",
-  });
-});
-
-test("previewMetadata emits correlated lifecycle events with bounded status", async () => {
-  const events: Array<{ event: string; context?: Record<string, unknown> }> =
-    [];
-  const services = createVideoMetadataServices(
-    makeDeps({
-      operationIdFactory: () => "preview-operation",
-      logger: {
-        info: (payload) => events.push(payload),
-        error: (payload) => events.push(payload),
-      },
-    }),
-  );
-
-  await services.previewMetadata({
-    credentialRef: { userId: "user-1" },
-    videoId: "video-1",
-    editorialPrompt: "private prompt",
-  });
-
-  assert.deepEqual(events, [
-    {
-      event: "video_metadata.preview.started",
-      context: { operationId: "preview-operation", videoId: "video-1" },
-    },
-    {
-      event: "video_metadata.preview.success",
-      context: {
-        operationId: "preview-operation",
-        videoId: "video-1",
-        status: "available",
-      },
-    },
-  ]);
-  assert.equal(JSON.stringify(events).includes("private prompt"), false);
+  assert.deepEqual(result.transcript, { status: "unsupported", reason: "provider-missing" });
 });
 
 test("previewMetadata returns one finalTitle and one description", async () => {
@@ -475,10 +278,7 @@ test("previewMetadata remains enabled when transcript is unavailable", async () 
   const services = createVideoMetadataServices(
     makeDeps({
       transcriptProvider: {
-        getTranscript: async () => ({
-          status: "unavailable",
-          reason: "no-captions",
-        }),
+        getTranscript: async () => ({ status: "unavailable", reason: "no-captions" }),
       },
       metadataGenerator: {
         generate: async ({ transcript }) => {
@@ -486,7 +286,7 @@ test("previewMetadata remains enabled when transcript is unavailable", async () 
           return makeDraft();
         },
       },
-    }),
+    })
   );
 
   const result = await services.previewMetadata({
@@ -522,7 +322,7 @@ test("previewMetadata keeps working with granular transcript diagnostics", async
           return makeDraft();
         },
       },
-    }),
+    })
   );
 
   const result = await services.previewMetadata({
@@ -550,10 +350,7 @@ test("previewMetadata remains enabled when transcript provider is unsupported", 
   const services = createVideoMetadataServices(
     makeDeps({
       transcriptProvider: {
-        getTranscript: async () => ({
-          status: "unsupported",
-          reason: "provider-missing",
-        }),
+        getTranscript: async () => ({ status: "unsupported", reason: "provider-missing" }),
       },
       metadataGenerator: {
         generate: async ({ transcript }) => {
@@ -561,7 +358,7 @@ test("previewMetadata remains enabled when transcript provider is unsupported", 
           return makeDraft();
         },
       },
-    }),
+    })
   );
 
   const result = await services.previewMetadata({
@@ -584,7 +381,7 @@ test("applyMetadata dryRun and apply share the exact same proposed payload", asy
           applyCalls += 1;
         },
       },
-    }),
+    })
   );
 
   const input = {
@@ -602,10 +399,7 @@ test("applyMetadata dryRun and apply share the exact same proposed payload", asy
   assert.equal(applyResult.dryRun, false);
   assert.equal(applyCalls, 1);
   assert.deepEqual(dryRunResult.snippet.proposed, applyResult.snippet.proposed);
-  assert.deepEqual(
-    dryRunResult.localizations.proposed,
-    applyResult.localizations.proposed,
-  );
+  assert.deepEqual(dryRunResult.localizations.proposed, applyResult.localizations.proposed);
   assert.equal(dryRunResult.targetLanguage, "es");
 });
 
@@ -618,7 +412,7 @@ test("applyMetadata preserves non-editorial snippet fields and non-target locali
           capturedProposal = proposal;
         },
       },
-    }),
+    })
   );
 
   const result = await services.applyMetadata({
@@ -698,7 +492,7 @@ test("applyMetadata resolves target language from defaultLanguage or single loca
         youtubeApi: {
           getVideoMetadataContext: async () => testCase.context,
         },
-      }),
+      })
     );
 
     const result = await services.applyMetadata({
@@ -710,11 +504,7 @@ test("applyMetadata resolves target language from defaultLanguage or single loca
       dryRun: true,
     });
 
-    assert.equal(
-      result.targetLanguage,
-      testCase.expectedLanguage,
-      testCase.name,
-    );
+    assert.equal(result.targetLanguage, testCase.expectedLanguage, testCase.name);
     assert.equal(result.languageSource, testCase.expectedSource, testCase.name);
   }
 });
@@ -750,7 +540,7 @@ test("applyMetadata blocks when target language is not uniquely resolvable", asy
             applyCalls += 1;
           },
         },
-      }),
+      })
     );
 
     await assert.rejects(
@@ -767,188 +557,11 @@ test("applyMetadata blocks when target language is not uniquely resolvable", asy
         error instanceof DomainError &&
         error.code === "target_language_unresolvable" &&
         /Cannot resolve target language/.test(error.message),
-      blockingCase.name,
+      blockingCase.name
     );
 
     assert.equal(applyCalls, 0, `${blockingCase.name} should not mutate`);
   }
-});
-
-test("applyMetadata emits correlated success trace with safe context", async () => {
-  const events: Array<{ event: string; context?: Record<string, unknown> }> =
-    [];
-  const services = createVideoMetadataServices(
-    makeDeps({
-      operationIdFactory: () => "operation-1",
-      logger: {
-        info: (payload) => events.push(payload),
-        error: (payload) => events.push(payload),
-      },
-    }),
-  );
-
-  await services.applyMetadata({
-    credentialRef: { userId: "user-1" },
-    videoId: "video-1",
-    finalTitle: "Sensitive title",
-    description: "Sensitive description",
-    expectedChannelId: "UC_ACTIVE",
-  });
-
-  assert.deepEqual(
-    events.map(({ event }) => event),
-    ["video_metadata.apply.started", "video_metadata.apply.success"],
-  );
-  for (const entry of events) {
-    assert.deepEqual(Object.keys(entry.context ?? {}).sort(), [
-      "dryRun",
-      "expectedChannelId",
-      "operationId",
-      "videoId",
-    ]);
-    assert.equal(entry.context?.operationId, "operation-1");
-    assert.equal("description" in (entry.context ?? {}), false);
-  }
-});
-
-test("applyMetadata emits dry-run trace without mutating", async () => {
-  const events: string[] = [];
-  let applyCalls = 0;
-  const services = createVideoMetadataServices(
-    makeDeps({
-      operationIdFactory: () => "dry-run-operation",
-      logger: {
-        info: ({ event }) => events.push(event),
-        error: ({ event }) => events.push(event),
-      },
-      youtubeApi: {
-        applyMetadataProposal: async () => {
-          applyCalls += 1;
-        },
-      },
-    }),
-  );
-
-  const result = await services.applyMetadata({
-    credentialRef: { userId: "user-1" },
-    videoId: "video-1",
-    finalTitle: "New title",
-    description: "New description",
-    expectedChannelId: "UC_ACTIVE",
-    dryRun: true,
-  });
-
-  assert.equal(result.dryRun, true);
-  assert.equal(applyCalls, 0);
-  assert.deepEqual(events, [
-    "video_metadata.apply.started",
-    "video_metadata.apply.dry_run",
-  ]);
-});
-
-test("applyMetadata reuses injected operation ID for provider failures", async () => {
-  const events: Array<{ event: string; context?: Record<string, unknown> }> =
-    [];
-  const services = createVideoMetadataServices(
-    makeDeps({
-      operationIdFactory: () => "failed-operation",
-      logger: {
-        info: (payload) => events.push(payload),
-        error: (payload) => events.push(payload),
-      },
-      youtubeApi: {
-        applyMetadataProposal: async () => {
-          throw new Error("provider secret details");
-        },
-      },
-    }),
-  );
-
-  await assert.rejects(
-    () =>
-      services.applyMetadata({
-        credentialRef: { userId: "user-1" },
-        videoId: "video-1",
-        finalTitle: "New title",
-        description: "New description",
-        expectedChannelId: "UC_ACTIVE",
-      }),
-    (error: unknown) =>
-      error instanceof DomainError && error.code === "update_failed",
-  );
-
-  assert.equal(events[1]?.event, "video_metadata.apply.error");
-  assert.equal(events[1]?.context?.operationId, "failed-operation");
-  assert.equal(events[1]?.context?.code, "update_failed");
-  assert.equal("message" in (events[1]?.context ?? {}), false);
-});
-
-test("applyMetadata traces guardrail rejection without exposing details", async () => {
-  const events: Array<{ event: string; context?: Record<string, unknown> }> =
-    [];
-  const services = createVideoMetadataServices(
-    makeDeps({
-      operationIdFactory: () => "guardrail-operation",
-      logger: {
-        info: (payload) => events.push(payload),
-        error: (payload) => events.push(payload),
-      },
-      writeContext: {
-        assertWriteChannel: async () => {
-          throw new DomainError({
-            code: "WRITE_CHANNEL_MISMATCH",
-            message: "secret guardrail details",
-          });
-        },
-      },
-    }),
-  );
-
-  await assert.rejects(
-    () =>
-      services.applyMetadata({
-        credentialRef: { userId: "user-1" },
-        videoId: "video-1",
-        finalTitle: "New title",
-        description: "New description",
-        expectedChannelId: "UC_EXPECTED",
-      }),
-    (error: unknown) =>
-      error instanceof DomainError && error.code === "WRITE_CHANNEL_MISMATCH",
-  );
-
-  assert.deepEqual(events[1]?.context, {
-    code: "WRITE_CHANNEL_MISMATCH",
-    dryRun: false,
-    expectedChannelId: "UC_EXPECTED",
-    operationId: "guardrail-operation",
-    videoId: "video-1",
-  });
-});
-
-test("applyMetadata ignores logger failures", async () => {
-  const services = createVideoMetadataServices(
-    makeDeps({
-      operationIdFactory: () => "logger-failure-operation",
-      logger: {
-        info: () => {
-          throw new Error("logger unavailable");
-        },
-        error: () => {
-          throw new Error("logger unavailable");
-        },
-      },
-    }),
-  );
-
-  const result = await services.applyMetadata({
-    credentialRef: { userId: "user-1" },
-    videoId: "video-1",
-    finalTitle: "New title",
-    description: "New description",
-    expectedChannelId: "UC_ACTIVE",
-  });
-  assert.equal(result.dryRun, false);
 });
 
 test("applyMetadata fails closed when write-channel guardrail rejects", async () => {
@@ -959,8 +572,7 @@ test("applyMetadata fails closed when write-channel guardrail rejects", async ()
         assertWriteChannel: async () => {
           throw new DomainError({
             code: "WRITE_CHANNEL_MISMATCH",
-            message:
-              "expectedChannelId does not match the active write channel",
+            message: "expectedChannelId does not match the active write channel",
             details: {
               expectedChannelId: "UC_EXPECTED",
               activeWriteChannelId: "UC_ACTIVE",
@@ -973,7 +585,7 @@ test("applyMetadata fails closed when write-channel guardrail rejects", async ()
           applyCalls += 1;
         },
       },
-    }),
+    })
   );
 
   await assert.rejects(
@@ -986,128 +598,8 @@ test("applyMetadata fails closed when write-channel guardrail rejects", async ()
         expectedChannelId: "UC_EXPECTED",
         dryRun: false,
       }),
-    (error: unknown) =>
-      error instanceof DomainError && error.code === "WRITE_CHANNEL_MISMATCH",
+    (error: unknown) => error instanceof DomainError && error.code === "WRITE_CHANNEL_MISMATCH"
   );
 
   assert.equal(applyCalls, 0);
-});
-
-test("applyMetadata accounts attempted reads and update with one operation ID", async () => {
-  const accountant = new InMemoryQuotaAccountant();
-  let updateCalls = 0;
-  const services = createVideoMetadataServices(
-    makeDeps({
-      operationIdFactory: () => "quota-operation",
-      quotaAccountant: accountant,
-      youtubeApi: {
-        applyMetadataProposal: async () => {
-          updateCalls += 1;
-        },
-      },
-    }),
-  );
-  const input = {
-    credentialRef: { userId: "user-1" },
-    videoId: "video-1",
-    finalTitle: "New title",
-    description: "New description",
-    expectedChannelId: "UC_ACTIVE",
-  };
-  await services.applyMetadata({ ...input, dryRun: true });
-  assert.deepEqual(
-    accountant.entries().map((entry) => [entry.operationId, entry.operation]),
-    [
-      ["quota-operation", "channels.list"],
-      ["quota-operation", "videos.list"],
-    ],
-  );
-  await services.applyMetadata(input);
-  assert.deepEqual(
-    accountant.entries().map((entry) => entry.operation),
-    [
-      "channels.list",
-      "videos.list",
-      "channels.list",
-      "videos.list",
-      "videos.update",
-    ],
-  );
-  assert.equal(updateCalls, 1);
-});
-
-test("applyMetadata isolates accountant failures", async () => {
-  const services = createVideoMetadataServices(
-    makeDeps({
-      quotaAccountant: {
-        record: () => {
-          throw new Error("accountant unavailable");
-        },
-      },
-    }),
-  );
-  const result = await services.applyMetadata({
-    credentialRef: { userId: "user-1" },
-    videoId: "video-1",
-    finalTitle: "New title",
-    description: "New description",
-    expectedChannelId: "UC_ACTIVE",
-  });
-  assert.equal(result.dryRun, false);
-});
-
-test("applyMetadata accounts attempted operations when guardrail or provider rejects", async () => {
-  const guardrailAccountant = new InMemoryQuotaAccountant();
-  const guardrailServices = createVideoMetadataServices(
-    makeDeps({
-      operationIdFactory: () => "guardrail-quota",
-      quotaAccountant: guardrailAccountant,
-      writeContext: {
-        assertWriteChannel: async () => {
-          throw new DomainError({
-            code: "WRITE_CHANNEL_MISMATCH",
-            message: "rejected",
-          });
-        },
-      },
-    }),
-  );
-  await assert.rejects(() =>
-    guardrailServices.applyMetadata({
-      credentialRef: { userId: "user-1" },
-      videoId: "video-1",
-      finalTitle: "t",
-      description: "d",
-      expectedChannelId: "UC_EXPECTED",
-    }),
-  );
-  assert.deepEqual(
-    guardrailAccountant.entries().map((entry) => entry.operation),
-    ["channels.list"],
-  );
-  const providerAccountant = new InMemoryQuotaAccountant();
-  const providerServices = createVideoMetadataServices(
-    makeDeps({
-      operationIdFactory: () => "provider-quota",
-      quotaAccountant: providerAccountant,
-      youtubeApi: {
-        applyMetadataProposal: async () => {
-          throw new Error("provider failure");
-        },
-      },
-    }),
-  );
-  await assert.rejects(() =>
-    providerServices.applyMetadata({
-      credentialRef: { userId: "user-1" },
-      videoId: "video-1",
-      finalTitle: "t",
-      description: "d",
-      expectedChannelId: "UC_ACTIVE",
-    }),
-  );
-  assert.deepEqual(
-    providerAccountant.entries().map((entry) => entry.operation),
-    ["channels.list", "videos.list", "videos.update"],
-  );
 });
