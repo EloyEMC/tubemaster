@@ -6,44 +6,27 @@ import type { DeviceAuthorizationStart } from "@/lib/auth";
 import { createVideoMetadataCore } from "@/lib/video-metadata";
 import { DomainError } from "@/lib/video-metadata/contracts";
 import type { VideoMetadataCore } from "@/lib/video-metadata";
-import {
-  createPlaylistManagementCore,
-  type PlaylistManagementCore,
-} from "@/lib/playlist-management";
+import { createPlaylistManagementCore, type PlaylistManagementCore } from "@/lib/playlist-management";
 import { createCliAuthService } from "@/lib/cli-auth/service";
 import type { CredentialRef } from "@/lib/video-metadata/contracts";
-import {
-  summarizeQuotaUsage,
-  type QuotaUsageSummary,
-  type QuotaUsageSummaryFilter,
-} from "@/lib/quota/repository";
 
 loadEnvConfig(process.cwd());
 
 type CliAuthAdapter = {
   login(args?: { timeoutMs?: number }): Promise<unknown>;
-  loginDevice(args?: {
-    onPending?: (data: DeviceAuthorizationStart) => void;
-  }): Promise<unknown>;
+  loginDevice(args?: { onPending?: (data: DeviceAuthorizationStart) => void }): Promise<unknown>;
   whoami(): Promise<unknown>;
-  listKnownWriteChannels(args?: {
-    credentialRef?: CredentialRef;
-  }): Promise<unknown>;
-  selectWriteChannel(args: {
-    channelId: string;
-    credentialRef?: CredentialRef;
-  }): Promise<unknown>;
+  listKnownWriteChannels(args?: { credentialRef?: CredentialRef }): Promise<unknown>;
+  selectWriteChannel(args: { channelId: string; credentialRef?: CredentialRef }): Promise<unknown>;
   listUsers(): Promise<unknown>;
   selectUser(args: { userId: string }): Promise<unknown>;
   logout(): Promise<unknown>;
   revoke(args?: { userId?: string }): Promise<unknown>;
-  resolveEffectiveCredentialRef(args: {
-    explicit?: CredentialRef;
-  }): Promise<CredentialRef>;
+  resolveEffectiveCredentialRef(args: { explicit?: CredentialRef }): Promise<CredentialRef>;
 };
 
 export type ParsedArgs = {
-  namespace: "metadata" | "auth" | "playlist" | "quota";
+  namespace: "metadata" | "auth" | "playlist";
   command:
     | "list"
     | "transcript"
@@ -61,8 +44,7 @@ export type ParsedArgs = {
     | "list-users"
     | "select-user"
     | "logout"
-    | "revoke"
-    | "usage";
+    | "revoke";
   flags: Record<string, string | boolean>;
 };
 
@@ -70,43 +52,21 @@ export function parseArgs(argv: string[]): ParsedArgs {
   const [namespaceRaw, maybeCommandRaw, ...remaining] = argv;
   const isAuthNamespace = namespaceRaw === "auth";
   const isPlaylistNamespace = namespaceRaw === "playlist";
-  const isQuotaNamespace = namespaceRaw === "quota";
   const commandRaw =
-    isAuthNamespace || isPlaylistNamespace || isQuotaNamespace
-      ? maybeCommandRaw
-      : namespaceRaw;
+    isAuthNamespace || isPlaylistNamespace ? maybeCommandRaw : namespaceRaw;
   const flagTokens =
-    isAuthNamespace || isPlaylistNamespace || isQuotaNamespace
+    isAuthNamespace || isPlaylistNamespace
       ? remaining
       : [maybeCommandRaw, ...remaining].filter(Boolean);
 
   const validMetadataCommands = ["list", "transcript", "preview", "apply"];
-  const validAuthCommands = [
-    "login",
-    "whoami",
-    "list-channels",
-    "select-channel",
-    "list-users",
-    "select-user",
-    "logout",
-    "revoke",
-  ];
-  const validPlaylistCommands = [
-    "list",
-    "create",
-    "update",
-    "delete",
-    "add",
-    "remove",
-  ];
-  const validQuotaCommands = ["usage"];
+  const validAuthCommands = ["login", "whoami", "list-channels", "select-channel", "list-users", "select-user", "logout", "revoke"];
+  const validPlaylistCommands = ["list", "create", "update", "delete", "add", "remove"];
   const validCommands = isAuthNamespace
     ? validAuthCommands
     : isPlaylistNamespace
       ? validPlaylistCommands
-      : isQuotaNamespace
-        ? validQuotaCommands
-        : validMetadataCommands;
+      : validMetadataCommands;
 
   if (!commandRaw || !validCommands.includes(commandRaw)) {
     throw new DomainError({
@@ -115,9 +75,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
         ? "Auth command must be one of: login, whoami, list-channels, select-channel, list-users, select-user, logout, revoke"
         : isPlaylistNamespace
           ? "Playlist command must be one of: list, create, update, delete, add, remove"
-          : isQuotaNamespace
-            ? "Quota command must be one of: usage"
-            : "Command must be one of: list, transcript, preview, apply",
+          : "Command must be one of: list, transcript, preview, apply",
     });
   }
 
@@ -135,7 +93,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     const key = token.slice(2);
     const nextValue = flagTokens[i + 1];
 
-    if (nextValue === undefined || nextValue.startsWith("--")) {
+    if (!nextValue || nextValue.startsWith("--")) {
       flags[key] = true;
       continue;
     }
@@ -144,55 +102,11 @@ export function parseArgs(argv: string[]): ParsedArgs {
     i += 1;
   }
 
-  if (isQuotaNamespace) {
-    const flagNames = Object.keys(flags);
-    if (flagNames.some((key) => key !== "channelId")) {
-      throw new DomainError({
-        code: "validation_failed",
-        message: "Quota usage only accepts --channelId",
-      });
-    }
-    if (
-      "channelId" in flags &&
-      (typeof flags.channelId !== "string" ||
-        !/^[A-Za-z0-9_-]+$/.test(flags.channelId))
-    ) {
-      throw new DomainError({
-        code: "validation_failed",
-        message: "Invalid --channelId",
-      });
-    }
-  }
-
   return {
-    namespace: isAuthNamespace
-      ? "auth"
-      : isPlaylistNamespace
-        ? "playlist"
-        : isQuotaNamespace
-          ? "quota"
-          : "metadata",
+    namespace: isAuthNamespace ? "auth" : isPlaylistNamespace ? "playlist" : "metadata",
     command: commandRaw as ParsedArgs["command"],
     flags,
   };
-}
-
-function requirePlaylistMutationConfirmation(
-  flags: Record<string, string | boolean>,
-): void {
-  if (flags.confirmed === true) return;
-
-  if ("confirmed" in flags) {
-    throw new DomainError({
-      code: "validation_failed",
-      message: "--confirmed must be provided without a value",
-    });
-  }
-
-  throw new DomainError({
-    code: "validation_failed",
-    message: "Missing required --confirmed",
-  });
 }
 
 function parseVideoIdsFlag(flags: Record<string, string | boolean>) {
@@ -212,9 +126,7 @@ function parseVideoIdsFlag(flags: Record<string, string | boolean>) {
   return ids;
 }
 
-export function getCredentialRef(
-  flags: Record<string, string | boolean>,
-): CredentialRef | null {
+export function getCredentialRef(flags: Record<string, string | boolean>): CredentialRef | null {
   const userId = flags.userId;
   const accessToken = flags.accessToken;
 
@@ -229,9 +141,7 @@ export function getCredentialRef(
         typeof flags.refreshToken === "string" ? flags.refreshToken : undefined,
       scope: typeof flags.scope === "string" ? flags.scope : undefined,
       tokenExpiry:
-        typeof flags.tokenExpiry === "string"
-          ? Number(flags.tokenExpiry)
-          : undefined,
+        typeof flags.tokenExpiry === "string" ? Number(flags.tokenExpiry) : undefined,
     };
   }
 
@@ -240,7 +150,7 @@ export function getCredentialRef(
 
 export function requiredStringFlag(
   flags: Record<string, string | boolean>,
-  key: string,
+  key: string
 ): string {
   const value = flags[key];
   if (typeof value === "string" && value.length > 0) return value;
@@ -280,37 +190,11 @@ function serializeError(error: unknown) {
   });
 }
 
-type QuotaReader = {
-  summarizeQuotaUsage(
-    filter: QuotaUsageSummaryFilter,
-  ): Promise<QuotaUsageSummary[]>;
-};
-
-function activeUserId(value: unknown): string {
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "userId" in value &&
-    typeof value.userId === "string" &&
-    value.userId.length > 0
-  ) {
-    return value.userId;
-  }
-
-  throw new DomainError({
-    code: "validation_failed",
-    message: "Authenticated user identity is unavailable",
-  });
-}
-
 export async function runCliCommand(args: {
   argv: string[];
   core?: Pick<
     VideoMetadataCore & PlaylistManagementCore,
-    | "listVideos"
-    | "getTranscript"
-    | "previewMetadata"
-    | "applyMetadata"
+    "listVideos" | "getTranscript" | "previewMetadata" | "applyMetadata"
     | "listPlaylists"
     | "createPlaylist"
     | "updatePlaylist"
@@ -319,7 +203,6 @@ export async function runCliCommand(args: {
     | "removeVideosFromPlaylist"
   >;
   auth?: CliAuthAdapter;
-  quotaReader?: QuotaReader;
   writeStdout?: (line: string) => void;
   writeStderr?: (line: string) => void;
 }): Promise<number> {
@@ -328,7 +211,6 @@ export async function runCliCommand(args: {
     ...createPlaylistManagementCore(),
   };
   const auth = args.auth ?? createCliAuthService();
-  const quotaReader = args.quotaReader ?? { summarizeQuotaUsage };
   const writeStdout =
     args.writeStdout ?? ((line: string) => process.stdout.write(`${line}\n`));
   const writeStderr =
@@ -342,8 +224,7 @@ export async function runCliCommand(args: {
         const result =
           parsedArgs.flags.device === true
             ? await auth.loginDevice({
-                onPending: (data) =>
-                  writeStderr(serializeEvent("auth_pending", data)),
+                onPending: (data) => writeStderr(serializeEvent("auth_pending", data)),
               })
             : await auth.login();
         writeStdout(serializeSuccess(result));
@@ -366,13 +247,8 @@ export async function runCliCommand(args: {
       if (parsedArgs.command === "select-channel") {
         const credentialRef = getCredentialRef(parsedArgs.flags) ?? undefined;
         const channelId =
-          typeof parsedArgs.flags.channelId === "string"
-            ? parsedArgs.flags.channelId
-            : "";
-        const result = await auth.selectWriteChannel({
-          channelId,
-          credentialRef,
-        });
+          typeof parsedArgs.flags.channelId === "string" ? parsedArgs.flags.channelId : "";
+        const result = await auth.selectWriteChannel({ channelId, credentialRef });
         writeStdout(serializeSuccess(result));
         return 0;
       }
@@ -398,23 +274,8 @@ export async function runCliCommand(args: {
       }
 
       const revokeUserId =
-        typeof parsedArgs.flags.userId === "string"
-          ? parsedArgs.flags.userId
-          : undefined;
+        typeof parsedArgs.flags.userId === "string" ? parsedArgs.flags.userId : undefined;
       const result = await auth.revoke({ userId: revokeUserId });
-      writeStdout(serializeSuccess(result));
-      return 0;
-    }
-
-    if (parsedArgs.namespace === "quota") {
-      const user = await auth.whoami();
-      const result = await quotaReader.summarizeQuotaUsage({
-        scopeType: "user",
-        scopeId: activeUserId(user),
-        ...(typeof parsedArgs.flags.channelId === "string"
-          ? { channelId: parsedArgs.flags.channelId }
-          : {}),
-      });
       writeStdout(serializeSuccess(result));
       return 0;
     }
@@ -432,14 +293,10 @@ export async function runCliCommand(args: {
       }
 
       if (parsedArgs.command === "create") {
-        requirePlaylistMutationConfirmation(parsedArgs.flags);
         const result = await core.createPlaylist({
           credentialRef,
           title: requiredStringFlag(parsedArgs.flags, "title"),
-          expectedChannelId: requiredStringFlag(
-            parsedArgs.flags,
-            "expectedChannelId",
-          ),
+          expectedChannelId: requiredStringFlag(parsedArgs.flags, "expectedChannelId"),
           description:
             typeof parsedArgs.flags.description === "string"
               ? parsedArgs.flags.description
@@ -454,11 +311,7 @@ export async function runCliCommand(args: {
       }
 
       if (parsedArgs.command === "update") {
-        requirePlaylistMutationConfirmation(parsedArgs.flags);
-        const title =
-          typeof parsedArgs.flags.title === "string"
-            ? parsedArgs.flags.title
-            : undefined;
+        const title = typeof parsedArgs.flags.title === "string" ? parsedArgs.flags.title : undefined;
         const description =
           typeof parsedArgs.flags.description === "string"
             ? parsedArgs.flags.description
@@ -468,25 +321,17 @@ export async function runCliCommand(args: {
             ? parsedArgs.flags.privacyStatus
             : undefined;
 
-        if (
-          title === undefined &&
-          description === undefined &&
-          privacyStatus === undefined
-        ) {
+        if (title === undefined && description === undefined && privacyStatus === undefined) {
           throw new DomainError({
             code: "validation_failed",
-            message:
-              "At least one mutable field is required: title, description or privacyStatus",
+            message: "At least one mutable field is required: title, description or privacyStatus",
           });
         }
 
         const result = await core.updatePlaylist({
           credentialRef,
           playlistId: requiredStringFlag(parsedArgs.flags, "playlistId"),
-          expectedChannelId: requiredStringFlag(
-            parsedArgs.flags,
-            "expectedChannelId",
-          ),
+          expectedChannelId: requiredStringFlag(parsedArgs.flags, "expectedChannelId"),
           title,
           description,
           privacyStatus,
@@ -496,42 +341,28 @@ export async function runCliCommand(args: {
       }
 
       if (parsedArgs.command === "delete") {
-        requirePlaylistMutationConfirmation(parsedArgs.flags);
         const result = await core.deletePlaylist({
           credentialRef,
           playlistId: requiredStringFlag(parsedArgs.flags, "playlistId"),
-          expectedChannelId: requiredStringFlag(
-            parsedArgs.flags,
-            "expectedChannelId",
-          ),
+          expectedChannelId: requiredStringFlag(parsedArgs.flags, "expectedChannelId"),
         });
         writeStdout(serializeSuccess(result));
         return 0;
       }
 
       if (parsedArgs.command === "add") {
-        requirePlaylistMutationConfirmation(parsedArgs.flags);
         const result = await core.addVideosToPlaylist({
           credentialRef,
           playlistId: requiredStringFlag(parsedArgs.flags, "playlistId"),
-          expectedChannelId: requiredStringFlag(
-            parsedArgs.flags,
-            "expectedChannelId",
-          ),
           videoIds: parseVideoIdsFlag(parsedArgs.flags),
         });
         writeStdout(serializeSuccess(result));
         return 0;
       }
 
-      requirePlaylistMutationConfirmation(parsedArgs.flags);
       const result = await core.removeVideosFromPlaylist({
         credentialRef,
         playlistId: requiredStringFlag(parsedArgs.flags, "playlistId"),
-        expectedChannelId: requiredStringFlag(
-          parsedArgs.flags,
-          "expectedChannelId",
-        ),
         videoIds: parseVideoIdsFlag(parsedArgs.flags),
       });
       writeStdout(serializeSuccess(result));
@@ -544,9 +375,7 @@ export async function runCliCommand(args: {
           ? Number(parsedArgs.flags.maxResults)
           : undefined;
       const channelId =
-        typeof parsedArgs.flags.channelId === "string"
-          ? parsedArgs.flags.channelId
-          : undefined;
+        typeof parsedArgs.flags.channelId === "string" ? parsedArgs.flags.channelId : undefined;
 
       const result = await core.listVideos({
         credentialRef,
@@ -572,10 +401,7 @@ export async function runCliCommand(args: {
       const result = await core.previewMetadata({
         credentialRef,
         videoId: requiredStringFlag(parsedArgs.flags, "videoId"),
-        editorialPrompt: requiredStringFlag(
-          parsedArgs.flags,
-          "editorialPrompt",
-        ),
+        editorialPrompt: requiredStringFlag(parsedArgs.flags, "editorialPrompt"),
       });
 
       writeStdout(serializeSuccess(result));
@@ -587,10 +413,7 @@ export async function runCliCommand(args: {
       videoId: requiredStringFlag(parsedArgs.flags, "videoId"),
       finalTitle: requiredStringFlag(parsedArgs.flags, "finalTitle"),
       description: requiredStringFlag(parsedArgs.flags, "description"),
-      expectedChannelId: requiredStringFlag(
-        parsedArgs.flags,
-        "expectedChannelId",
-      ),
+      expectedChannelId: requiredStringFlag(parsedArgs.flags, "expectedChannelId"),
       dryRun: parsedArgs.flags.dryRun === true,
     });
 
