@@ -3,10 +3,6 @@ import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { DomainError } from "@/lib/video-metadata/contracts";
 import { createVideoMetadataCore } from "@/lib/video-metadata";
-import {
-  parseWithSchema,
-  transcriptOutputSchema,
-} from "@/lib/video-metadata/schemas";
 import { getVideoMetadataErrorStatus } from "../error-status";
 import { parseVideoMetadataJsonBody } from "../parse-json-body";
 
@@ -19,7 +15,7 @@ export function createTranscriptPostHandler(
   deps: TranscriptRouteDeps = {
     getSession: () => getServerSession(authOptions),
     core: createVideoMetadataCore(),
-  },
+  }
 ) {
   return async function POST(request: Request) {
     const session = await deps.getSession();
@@ -35,13 +31,7 @@ export function createTranscriptPostHandler(
         credentialRef: { userId: session.user.id },
       });
 
-      const validatedResult = parseWithSchema(
-        transcriptOutputSchema,
-        result,
-        "transcript output",
-      );
-
-      return NextResponse.json(validatedResult);
+      return NextResponse.json(result);
     } catch (error) {
       if (error instanceof DomainError) {
         return NextResponse.json(
@@ -52,7 +42,7 @@ export function createTranscriptPostHandler(
           },
           {
             status: getVideoMetadataErrorStatus(error.code),
-          },
+          }
         );
       }
 
@@ -61,7 +51,7 @@ export function createTranscriptPostHandler(
           error: "internal_error",
           message: error instanceof Error ? error.message : "Unknown error",
         },
-        { status: 500 },
+        { status: 500 }
       );
     }
   };
