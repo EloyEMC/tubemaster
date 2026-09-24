@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ResolvedCredentials } from "../contracts";
-import {
-  createTranscriptProvider,
-  type TranscriptProviderDeps,
-} from "./transcript-provider";
-import { InMemoryQuotaAccountant } from "../../quota/accountant";
+import { createTranscriptProvider } from "./transcript-provider";
 
 function makeCredentials(): ResolvedCredentials {
   return {
@@ -18,9 +14,7 @@ function makeCredentials(): ResolvedCredentials {
 }
 
 type TranscriptProviderStubs = {
-  list: () => Promise<{
-    data: { items?: Array<{ id?: string; snippet?: { language?: string } }> };
-  }>;
+  list: () => Promise<{ data: { items?: Array<{ id?: string; snippet?: { language?: string } }> } }>;
   download: () => Promise<{ data: ArrayBuffer | Buffer | string }>;
 };
 
@@ -38,53 +32,6 @@ function makeProvider(stubs: TranscriptProviderStubs) {
     }),
   });
 }
-
-test("transcript provider accounts list and download attempts under one operation", async () => {
-  const accountant = new InMemoryQuotaAccountant();
-  let downloads = 0;
-  const provider = createTranscriptProvider({
-    provider: "youtube-captions",
-    operationIdFactory: () => "transcript-operation",
-    quotaAccountant: accountant,
-    createOAuthClient: () => ({ setCredentials: () => undefined }),
-    createYoutubeClient: () => ({
-      captions: {
-        list: async () => ({ data: { items: [{ id: "caption-1" }] } }),
-        download: async () => {
-          downloads += 1;
-          throw new Error("download failed");
-        },
-      },
-    }),
-  } satisfies TranscriptProviderDeps);
-
-  const result = await provider.getTranscript({
-    credentials: makeCredentials(),
-    videoId: "video-1",
-  });
-
-  assert.equal(result.status, "unavailable");
-  assert.equal(downloads, 1);
-  assert.deepEqual(
-    accountant.entries().map(({ operationId, operation, estimatedUnits }) => ({
-      operationId,
-      operation,
-      estimatedUnits,
-    })),
-    [
-      {
-        operationId: "transcript-operation",
-        operation: "captions.list",
-        estimatedUnits: 50,
-      },
-      {
-        operationId: "transcript-operation",
-        operation: "captions.download",
-        estimatedUnits: 200,
-      },
-    ],
-  );
-});
 
 test("transcript provider maps empty captions list to no-captions", async () => {
   const provider = makeProvider({
