@@ -1,7 +1,6 @@
 "use client";
 
 import { useSession, signOut, signIn } from "next-auth/react";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import { RuleForm } from "@/components/rule-form";
@@ -82,22 +81,16 @@ export default function Dashboard() {
       <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">YouTube Playlist Manager</h1>
-          <p className="text-sm text-zinc-400">Welcome, {session.user?.name}</p>
+          <p className="text-sm text-zinc-400">
+            Welcome, {session.user?.name}
+          </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Link
-            href="/dashboard/quota"
-            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200"
-          >
-            Quota
-          </Link>
-          <button
-            onClick={() => signOut()}
-            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200"
-          >
-            Sign Out
-          </button>
-        </div>
+        <button
+          onClick={() => signOut()}
+          className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200"
+        >
+          Sign Out
+        </button>
       </div>
 
       <div className="mb-6 flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">

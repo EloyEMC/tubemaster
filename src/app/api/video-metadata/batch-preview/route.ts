@@ -6,13 +6,13 @@ import { createVideoMetadataCore } from "@/lib/video-metadata";
 import { getVideoMetadataErrorStatus } from "../error-status";
 import { parseVideoMetadataJsonBody } from "../parse-json-body";
 
-type TranscriptRouteDeps = {
+type BatchPreviewRouteDeps = {
   getSession: () => Promise<{ user?: { id?: string | null } } | null>;
-  core: Pick<ReturnType<typeof createVideoMetadataCore>, "getTranscript">;
+  core: Pick<ReturnType<typeof createVideoMetadataCore>, "previewMetadataBatch">;
 };
 
-export function createTranscriptPostHandler(
-  deps: TranscriptRouteDeps = {
+export function createBatchPreviewPostHandler(
+  deps: BatchPreviewRouteDeps = {
     getSession: () => getServerSession(authOptions),
     core: createVideoMetadataCore(),
   }
@@ -25,8 +25,7 @@ export function createTranscriptPostHandler(
 
     try {
       const payload = await parseVideoMetadataJsonBody(request);
-
-      const result = await deps.core.getTranscript({
+      const result = await deps.core.previewMetadataBatch({
         ...payload,
         credentialRef: { userId: session.user.id },
       });
@@ -40,9 +39,7 @@ export function createTranscriptPostHandler(
             message: error.message,
             details: error.details,
           },
-          {
-            status: getVideoMetadataErrorStatus(error.code),
-          }
+          { status: getVideoMetadataErrorStatus(error.code) }
         );
       }
 
@@ -57,4 +54,4 @@ export function createTranscriptPostHandler(
   };
 }
 
-export const POST = createTranscriptPostHandler();
+export const POST = createBatchPreviewPostHandler();
