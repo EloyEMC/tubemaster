@@ -10,8 +10,6 @@ export const YOUTUBE_READ_SCOPE =
 export const YOUTUBE_WRITE_SCOPE = "https://www.googleapis.com/auth/youtube";
 export const YOUTUBE_FORCE_SSL_SCOPE =
   "https://www.googleapis.com/auth/youtube.force-ssl";
-export const YOUTUBE_ANALYTICS_READ_SCOPE =
-  "https://www.googleapis.com/auth/yt-analytics.readonly";
 
 export const GOOGLE_AUTH_BASE_SCOPES = ["openid", "email", "profile"] as const;
 export const YOUTUBE_SCOPES = [

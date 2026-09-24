@@ -1,22 +1,6 @@
-```yaml
-schema: gentle-ai.verify-result/v1
-evidence_revision: sha256:6f401d6bbc3d17fadcc3886ddffe956111197e6f1102b18cb470c77cbe8da1b0
-verdict: pass
-blockers: 0
-critical_findings: 0
-requirements: 16/16
-scenarios: 20/20
-test_command: npm test
-test_exit_code: 0
-test_output_hash: sha256:c5657995746880b3721688f268244592aa1f5ca42ab143741c8b0f45beb15c25
-build_command: npx tsc --noEmit
-build_exit_code: 0
-build_output_hash: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-```
-
 # Verification Report
 
-**Change**: transcript-diagnostics
+**Change**: transcript-diagnostics  
 **Mode**: Standard (strict_tdd: false)
 
 ---
@@ -35,26 +19,26 @@ All tasks in `openspec/changes/transcript-diagnostics/tasks.md` are marked `[x]`
 
 ### Build & Tests Execution
 
-**Tests**: ✅ 205 passed / ❌ 0 failed / ⚠️ 0 skipped
+**Tests**: ✅ 63 passed / ❌ 0 failed / ⚠️ 0 skipped  
 Command: `npm test`
 
 ```text
 node --import tsx --test "src/**/*.test.ts"
-tests: 205
-pass: 205
+tests: 63
+pass: 63
 fail: 0
 skipped: 0
-duration_ms: 5420.930375
+duration_ms: 2106.23925
 ```
 
-**Type check**: ✅ Passed
+**Type check**: ✅ Passed  
 Command: `npx tsc --noEmit`
 
 ```text
 (no output, exit 0)
 ```
 
-**Lint**: ✅ Passed
+**Lint**: ✅ Passed  
 Command: `npm run lint`
 
 ```text
@@ -74,23 +58,23 @@ eslint
 | core: Obtener transcripción con ausencia explícita | Provider de transcript no soportado | `src/lib/video-metadata/adapters/transcript-provider.test.ts > transcript provider returns unsupported...` + `services.test.ts > getTranscript keeps unsupported status` | ✅ COMPLIANT |
 | core: Clasificación de errores de YouTube Captions API | Error conocido de API mapeado | `src/lib/video-metadata/adapters/transcript-provider.test.ts` (quota/forbidden/insufficient/5xx cases) | ✅ COMPLIANT |
 | core: Clasificación de errores de YouTube Captions API | Error no clasificable | `src/lib/video-metadata/adapters/transcript-provider.test.ts > keeps unknown as safe fallback...` | ✅ COMPLIANT |
-| core: Validación estricta de input/output de transcript | Input inválido | `src/lib/video-metadata/services.test.ts > getTranscript rejects invalid input before provider call` | ✅ COMPLIANT |
-| core: Validación estricta de input/output de transcript | Output inválido del adapter | `src/lib/video-metadata/services.test.ts > getTranscript rejects invalid adapter output` | ✅ COMPLIANT |
+| core: Validación estricta de input/output de transcript | Input inválido | (none transcript-core specific) | ❌ UNTESTED |
+| core: Validación estricta de input/output de transcript | Output inválido del adapter | (none) | ❌ UNTESTED |
 | cli: Exposición consistente del contrato de transcript en CLI | Transcript unavailable en CLI | `src/cli/video-metadata.test.ts > CLI transcript keeps stable envelope...` | ✅ COMPLIANT |
-| cli: Exposición consistente del contrato de transcript en CLI | Transcript unsupported en CLI | `src/cli/video-metadata.test.ts > CLI transcript passes through unsupported provider status` | ✅ COMPLIANT |
-| cli: Compatibilidad razonable para consumidores CLI | Consumidor legacy interpreta salida | `src/cli/video-metadata.test.ts > CLI transcript keeps stable envelope...` | ✅ COMPLIANT |
+| cli: Exposición consistente del contrato de transcript en CLI | Transcript unsupported en CLI | (none transcript CLI unsupported case) | ❌ UNTESTED |
+| cli: Compatibilidad razonable para consumidores CLI | Consumidor legacy interpreta salida | `src/cli/video-metadata.test.ts > CLI transcript keeps stable envelope...` | ⚠️ PARTIAL |
 | cli: Validación estricta de entrada/salida de transcript en CLI | Argumento inválido de transcript | `src/cli/video-metadata.test.ts > CLI returns validation error...` | ✅ COMPLIANT |
 | mcp: Exposición consistente del contrato de transcript en MCP | Transcript unavailable en MCP | `src/mcp/server.test.ts > MCP transcript keeps structuredContent...` | ✅ COMPLIANT |
-| mcp: Exposición consistente del contrato de transcript en MCP | Transcript unsupported en MCP | `src/mcp/server.test.ts > MCP transcript passes through unsupported status...` | ✅ COMPLIANT |
-| mcp: Validación estricta de payloads transcript en MCP | Payload de transcript inválido | `src/mcp/server.test.ts > MCP handlers reject invalid input...` | ✅ COMPLIANT |
-| mcp: Compatibilidad razonable para clientes MCP | Cliente existente con parseo por status | `src/mcp/server.test.ts > MCP transcript keeps structuredContent...` | ✅ COMPLIANT |
+| mcp: Exposición consistente del contrato de transcript en MCP | Transcript unsupported en MCP | (none transcript MCP unsupported case) | ❌ UNTESTED |
+| mcp: Validación estricta de payloads transcript en MCP | Payload de transcript inválido | `src/mcp/server.test.ts > MCP handlers reject invalid input...` (covers validation pattern via preview handler, not transcript handler) | ⚠️ PARTIAL |
+| mcp: Compatibilidad razonable para clientes MCP | Cliente existente con parseo por status | `src/mcp/server.test.ts > MCP transcript keeps structuredContent...` | ⚠️ PARTIAL |
 | api: Contrato de transcript consistente en API | Respuesta unavailable en endpoint transcript | `src/app/api/video-metadata/transcript/route.test.ts > keeps unavailable diagnostic contract unchanged` | ✅ COMPLIANT |
-| api: Contrato de transcript consistente en API | Respuesta unsupported en endpoint transcript | `src/app/api/video-metadata/transcript/route.test.ts > returns unsupported payload with HTTP 200` | ✅ COMPLIANT |
-| api: Validación estricta de bordes en API | Request inválido | `src/app/api/video-metadata/transcript/route.test.ts > maps validation errors to 400` | ✅ COMPLIANT |
-| api: Validación estricta de bordes en API | Response fuera de esquema | `src/app/api/video-metadata/transcript/route.test.ts > maps malformed core output to validation failed` | ✅ COMPLIANT |
-| api: Compatibilidad razonable para consumidores API | Cliente existente consume status estable | route happy-path/unavailable/unsupported tests preserve response shape | ✅ COMPLIANT |
+| api: Contrato de transcript consistente en API | Respuesta unsupported en endpoint transcript | (none) | ❌ UNTESTED |
+| api: Validación estricta de bordes en API | Request inválido | `src/app/api/video-metadata/transcript/route.test.ts > maps validation errors to 400` (DomainError mapping validated; no direct invalid videoId parse path exercised) | ⚠️ PARTIAL |
+| api: Validación estricta de bordes en API | Response fuera de esquema | (none) | ❌ UNTESTED |
+| api: Compatibilidad razonable para consumidores API | Cliente existente consume status estable | route happy-path/unavailable tests preserve response shape | ⚠️ PARTIAL |
 
-**Compliance summary**: 20/20 scenarios compliant
+**Compliance summary**: 9/20 scenarios compliant
 
 ---
 
@@ -101,7 +85,7 @@ eslint
 | Core contract expanded (`unavailable.reason` granular + `diagnostic`) | ✅ Implemented | `src/lib/video-metadata/contracts.ts`, `src/lib/video-metadata/schemas.ts` contain granular union + strict diagnostic shape. |
 | Error classification by stage/reason/status with retriable inference | ✅ Implemented | `src/lib/video-metadata/adapters/transcript-provider.ts` uses `apiReason -> httpStatus -> fallback`, includes `stage`, `retriable`. |
 | Diagnostic sanitization | ✅ Implemented | Only `stage/httpStatus/apiReason/retriable` emitted; `apiReason` sanitized via whitelist regex and truncation. |
-| Strict transcript input/output validation | ✅ Implemented | `services.ts` validates transcript input/output with Zod (`parseWithSchema`); API route also validates output before response. |
+| Strict transcript input/output validation | ✅ Implemented | `services.ts` validates transcript input/output with Zod (`parseWithSchema`). |
 | API/CLI/MCP preserve core contract | ✅ Implemented | Route/CLI/MCP pass through core transcript payload without channel-specific mutation. |
 | README contract docs updated | ✅ Implemented | `README.md` documents new reasons + diagnostic fields and additive compatibility. |
 
@@ -118,37 +102,30 @@ eslint
 
 ---
 
-### Six Critical Scenarios Added in Latest Fix
-
-The following six previously-partial scenarios now have direct test coverage:
-
-| # | Area | Scenario | Test Added |
-|---|------|----------|------------|
-| 1 | API | Transcript unsupported response with HTTP 200 | `src/app/api/video-metadata/transcript/route.test.ts > transcript route returns unsupported payload with HTTP 200` |
-| 2 | API | Malformed core output maps to validation_failed | `src/app/api/video-metadata/transcript/route.test.ts > transcript route maps malformed core output to validation failed` |
-| 3 | API | Output schema validation before response serialization | `src/app/api/video-metadata/transcript/route.ts` now calls `parseWithSchema(transcriptOutputSchema, result, "transcript output")` |
-| 4 | CLI | Unsupported provider status pass-through | `src/cli/video-metadata.test.ts > CLI transcript passes through unsupported provider status` |
-| 5 | MCP | Unsupported status in structuredContent and text | `src/mcp/server.test.ts > MCP transcript passes through unsupported status in structuredContent and text` |
-| 6 | Services | Strict input validation before provider call | `src/lib/video-metadata/services.test.ts > getTranscript rejects invalid input without calling the provider` |
-
-All six scenarios are now covered by dedicated test assertions and implementation validation.
-
----
-
 ### Issues Found
 
-**CRITICAL**: None.
+**CRITICAL** (must fix before archive):
+- Core spec scenario **Input inválido** for transcript operation is untested at transcript core level.
+- Core spec scenario **Output inválido del adapter** is untested.
+- CLI spec scenario **Transcript unsupported en CLI** is untested.
+- MCP spec scenario **Transcript unsupported en MCP** is untested.
+- API spec scenario **Respuesta unsupported en endpoint transcript** is untested.
+- API spec scenario **Response fuera de esquema** is untested.
 
-**WARNING**: None.
+**WARNING** (should fix):
+- CLI legacy compatibility scenario is only partially evidenced (single unavailable case, no broader compatibility assertions).
+- MCP transcript payload validation scenario is only partially evidenced (validation tested via preview handler, not transcript-specific invalid payload).
+- API invalid request scenario verifies DomainError mapping but not direct invalid `videoId` parse path through real core.
+- API legacy status compatibility has indirect evidence only.
 
 **SUGGESTION** (nice to have):
-
 - Add a compact transcript contract conformance test matrix shared by core/API/CLI/MCP to reduce scenario drift.
+- Add one negative integration test using real `createVideoMetadataCore()` in route tests to validate end-to-end request schema failure.
 
 ---
 
 ### Verdict
 
-**PASS**
+**FAIL**
 
-All 16 tasks completed. All 20 spec scenarios compliant. All six previously-partial critical scenarios now covered with direct tests and implementation validation. Full validation suite passes with 205 tests, TypeScript type check, and lint. No blockers, no warnings. Change is ready for archive.
+No está listo para archive: la implementación estructural está bien y quality gates técnicos pasan, pero hay escenarios de spec marcados como **UNTESTED (CRITICAL)** que bloquean cierre de verificación.
