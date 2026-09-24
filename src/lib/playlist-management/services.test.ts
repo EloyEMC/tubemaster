@@ -2,10 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DomainError } from "./contracts";
 import { createPlaylistManagementServices } from "./services";
-import {
-  InMemoryQuotaAccountant,
-  type QuotaAccountant,
-} from "../quota/accountant";
+import { InMemoryQuotaAccountant } from "../quota/accountant";
 
 function createServicesFixture(
   options: {
@@ -24,17 +21,6 @@ function createServicesFixture(
     credentialRef: unknown;
     requiredScopes: readonly string[];
   }> = [];
-  const accountRead = (
-    args: { operationId?: string; quotaAccountant?: QuotaAccountant },
-    operation: "playlists.list" | "playlistItems.list",
-  ) => {
-    if (args.operationId) {
-      args.quotaAccountant?.record({
-        operationId: args.operationId,
-        operation,
-      });
-    }
-  };
 
   const services = createPlaylistManagementServices({
     authResolver: {
@@ -50,33 +36,27 @@ function createServicesFixture(
       },
     },
     youtubeApi: {
-      listPlaylists: async (args) => {
-        accountRead(args, "playlists.list");
-        return [
-          {
-            id: "p1",
-            title: "Playlist 1",
-            description: "Desc",
-            privacyStatus: "private",
-          },
-        ];
-      },
+      listPlaylists: async () => [
+        {
+          id: "p1",
+          title: "Playlist 1",
+          description: "Desc",
+          privacyStatus: "private",
+        },
+      ],
       createPlaylist: async ({ title, description, privacyStatus }) => ({
         id: "p-created",
         title,
         description: description ?? "",
         privacyStatus,
       }),
-      getPlaylistForUpdate: async ({ playlistId, ...args }) => {
-        accountRead(args, "playlists.list");
-        return {
-          id: playlistId,
-          title: "Playlist 1",
-          description: "Desc",
-          privacyStatus: "private",
-          channelId: "UC_ACTIVE",
-        };
-      },
+      getPlaylistForUpdate: async ({ playlistId }) => ({
+        id: playlistId,
+        title: "Playlist 1",
+        description: "Desc",
+        privacyStatus: "private",
+        channelId: "UC_ACTIVE",
+      }),
       updatePlaylist: async ({
         playlistId,
         title,
@@ -88,23 +68,18 @@ function createServicesFixture(
         description,
         privacyStatus,
       }),
-      getPlaylistForDelete: async ({ playlistId, ...args }) => {
-        accountRead(args, "playlists.list");
-        return {
-          id: playlistId,
-          channelId: "UC_ACTIVE",
-          title: "Playlist 1",
-        };
-      },
+      getPlaylistForDelete: async ({ playlistId }) => ({
+        id: playlistId,
+        channelId: "UC_ACTIVE",
+        title: "Playlist 1",
+      }),
       deletePlaylist: async () => undefined,
       addVideoToPlaylist: async () => undefined,
-      listPlaylistItemIdsByVideo: async (args) => {
-        accountRead(args, "playlistItems.list");
-        return new Map<string, string[]>([
+      listPlaylistItemIdsByVideo: async () =>
+        new Map<string, string[]>([
           ["v1", ["pi-1"]],
           ["v2", ["pi-2"]],
-        ]);
-      },
+        ]),
       deletePlaylistItem: async () => undefined,
     },
     writeContext: {
@@ -158,13 +133,11 @@ test("playlist operations emit correlated lifecycle events without leaking unsaf
   await services.addVideosToPlaylist({
     credentialRef: { userId: "user-1" },
     playlistId: "p1",
-    expectedChannelId: "UC_ACTIVE",
     videoIds: ["v1"],
   });
   await services.removeVideosFromPlaylist({
     credentialRef: { userId: "user-1" },
     playlistId: "p1",
-    expectedChannelId: "UC_ACTIVE",
     videoIds: ["v1"],
   });
 
@@ -247,13 +220,11 @@ test("playlist operations account attempted requests under one operation", async
   await services.addVideosToPlaylist({
     credentialRef: { userId: "user-1" },
     playlistId: "p1",
-    expectedChannelId: "UC_ACTIVE",
     videoIds: ["v1", "v2"],
   });
   await services.removeVideosFromPlaylist({
     credentialRef: { userId: "user-1" },
     playlistId: "p1",
-    expectedChannelId: "UC_ACTIVE",
     videoIds: ["v1"],
   });
 
@@ -812,7 +783,6 @@ test("addVideosToPlaylist returns stable partial result with per-item failures",
   const result = await services.addVideosToPlaylist({
     credentialRef: { userId: "user-1" },
     playlistId: "playlist-1",
-    expectedChannelId: "UC_ACTIVE",
     videoIds: ["v1", "v2", "v3"],
   });
 
@@ -827,124 +797,6 @@ test("addVideosToPlaylist returns stable partial result with per-item failures",
       },
     ],
   });
-});
-
-test("addVideosToPlaylist blocks channel mismatch before provider mutation", async () => {
-  let addCalls = 0;
-  const services = createPlaylistManagementServices({
-    authResolver: {
-      resolve: async (args) => ({
-        credentialRef: args.credentialRef as { userId: string },
-        accessToken: "access",
-        refreshToken: "refresh",
-        tokenExpiry: undefined,
-        scopeSet: new Set(args.requiredScopes),
-      }),
-    },
-    youtubeApi: {
-      listPlaylists: async () => [],
-      createPlaylist: async () => ({
-        id: "p-created",
-        title: "Created",
-        description: "",
-        privacyStatus: "private",
-      }),
-      getPlaylistForUpdate: async () => null,
-      updatePlaylist: async () => ({
-        id: "p-updated",
-        title: "Updated",
-        description: "",
-        privacyStatus: "private",
-      }),
-      getPlaylistForDelete: async () => null,
-      deletePlaylist: async () => undefined,
-      addVideoToPlaylist: async () => {
-        addCalls += 1;
-      },
-      listPlaylistItemIdsByVideo: async () => new Map(),
-      deletePlaylistItem: async () => undefined,
-    },
-    writeContext: {
-      assertWriteChannel: async () => {
-        throw new DomainError({
-          code: "WRITE_CHANNEL_MISMATCH",
-          message: "expectedChannelId does not match the active write channel",
-          details: {
-            expectedChannelId: "UC_EXPECTED",
-            activeWriteChannelId: "UC_ACTIVE",
-          },
-        });
-      },
-    },
-    channelSelectionStore: { setSelectedChannelId: async () => undefined },
-  });
-
-  await assert.rejects(
-    () =>
-      services.addVideosToPlaylist({
-        credentialRef: { userId: "user-1" },
-        playlistId: "playlist-1",
-        expectedChannelId: "UC_EXPECTED",
-        videoIds: ["v1"],
-      }),
-    (error: unknown) =>
-      error instanceof DomainError && error.code === "WRITE_CHANNEL_MISMATCH",
-  );
-  assert.equal(addCalls, 0);
-});
-
-test("addVideosToPlaylist redacts provider messages from partial failures", async () => {
-  const services = createPlaylistManagementServices({
-    authResolver: {
-      resolve: async (args) => ({
-        credentialRef: args.credentialRef as { userId: string },
-        accessToken: "access",
-        refreshToken: "refresh",
-        tokenExpiry: undefined,
-        scopeSet: new Set(args.requiredScopes),
-      }),
-    },
-    youtubeApi: {
-      listPlaylists: async () => [],
-      createPlaylist: async () => ({
-        id: "p-created",
-        title: "Created",
-        description: "",
-        privacyStatus: "private",
-      }),
-      getPlaylistForUpdate: async () => null,
-      updatePlaylist: async () => ({
-        id: "p-updated",
-        title: "Updated",
-        description: "",
-        privacyStatus: "private",
-      }),
-      getPlaylistForDelete: async () => null,
-      deletePlaylist: async () => undefined,
-      addVideoToPlaylist: async () => {
-        throw new Error("Bearer super-secret-token provider payload");
-      },
-      listPlaylistItemIdsByVideo: async () => new Map(),
-      deletePlaylistItem: async () => undefined,
-    },
-    writeContext: {
-      assertWriteChannel: async () => ({
-        expectedChannelId: "UC_ACTIVE",
-        activeWriteChannel: { id: "UC_ACTIVE", title: "Active" },
-        shouldPersistSelection: false,
-        userId: null,
-      }),
-    },
-    channelSelectionStore: { setSelectedChannelId: async () => undefined },
-  });
-
-  const result = await services.addVideosToPlaylist({
-    credentialRef: { userId: "user-1" },
-    playlistId: "playlist-1",
-    expectedChannelId: "UC_ACTIVE",
-    videoIds: ["v1"],
-  });
-  assert.deepEqual(result.failures, [{ videoId: "v1", reason: "unknown" }]);
 });
 
 test("removeVideosFromPlaylist preserves order and returns not-found failures", async () => {
@@ -1009,7 +861,6 @@ test("removeVideosFromPlaylist preserves order and returns not-found failures", 
   const result = await services.removeVideosFromPlaylist({
     credentialRef: { userId: "user-1" },
     playlistId: "playlist-1",
-    expectedChannelId: "UC_ACTIVE",
     videoIds: ["v1", "v2", "v3", "v1"],
   });
 

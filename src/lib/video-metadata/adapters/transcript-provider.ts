@@ -194,14 +194,9 @@ function safeAccount(
   accountant: QuotaAccountant | undefined,
   operationId: string,
   operation: "captions.list" | "captions.download",
-  channelId?: string,
 ) {
   try {
-    accountant?.record({
-      operationId,
-      operation,
-      ...(channelId ? { channelId } : {}),
-    });
+    accountant?.record({ operationId, operation });
   } catch {
     // Quota accounting is observational and cannot change the operation result.
   }
@@ -254,7 +249,6 @@ export function createTranscriptProvider(deps: TranscriptProviderDeps = {}) {
       videoId: string;
       operationId?: string;
       quotaAccountant?: QuotaAccountant;
-      channelId?: string;
     }): Promise<TranscriptResult> {
       const operationId =
         args.operationId ?? deps.operationIdFactory?.() ?? randomUUID();
@@ -276,7 +270,7 @@ export function createTranscriptProvider(deps: TranscriptProviderDeps = {}) {
 
       let listRes: Awaited<ReturnType<YoutubeClientLike["captions"]["list"]>>;
       try {
-        safeAccount(accountant, operationId, "captions.list", args.channelId);
+        safeAccount(accountant, operationId, "captions.list");
         listRes = await youtube.captions.list({
           part: ["snippet"],
           videoId: args.videoId,
@@ -297,12 +291,7 @@ export function createTranscriptProvider(deps: TranscriptProviderDeps = {}) {
         ReturnType<YoutubeClientLike["captions"]["download"]>
       >;
       try {
-        safeAccount(
-          accountant,
-          operationId,
-          "captions.download",
-          args.channelId,
-        );
+        safeAccount(accountant, operationId, "captions.download");
         downloadRes = await youtube.captions.download(
           {
             id: caption.id,

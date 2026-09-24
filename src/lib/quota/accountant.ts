@@ -1,8 +1,4 @@
-import {
-  quotaUsageRepository,
-  type InsertQuotaUsageInput,
-  type QuotaUsageRepository,
-} from "./repository";
+import { quotaUsageRepository, type QuotaUsageRepository } from "./repository";
 
 export const YOUTUBE_QUOTA_COSTS = {
   "channels.list": 1,
@@ -17,7 +13,6 @@ export const YOUTUBE_QUOTA_COSTS = {
   "playlistItems.delete": 50,
   "captions.list": 50,
   "captions.download": 200,
-  // YouTube Analytics reports.query is observationally accounted at one unit.
   "reports.query": 1,
 } as const;
 
@@ -28,48 +23,22 @@ export type QuotaEntry = {
   operation: QuotaOperation;
   estimatedUnits: number;
   timestamp: string;
-  channelId?: string;
-};
-
-export type QuotaRecord = {
-  operationId: string;
-  operation: QuotaOperation;
-  channelId?: string;
 };
 
 export type QuotaAccountant = {
-  record(entry: QuotaRecord): void;
+  record(entry: { operationId: string; operation: QuotaOperation }): void;
 };
-
-function validateEntry(entry: QuotaRecord): void {
-  if (
-    typeof entry.operationId !== "string" ||
-    entry.operationId.trim().length === 0
-  ) {
-    throw new TypeError("Quota operationId must be a non-empty string");
-  }
-  if (
-    typeof entry.operation !== "string" ||
-    !Object.hasOwn(YOUTUBE_QUOTA_COSTS, entry.operation)
-  ) {
-    throw new TypeError(
-      `Unknown YouTube quota operation: ${String(entry.operation)}`,
-    );
-  }
-}
 
 /** Process-local estimate only; this is not authoritative global quota enforcement. */
 export class InMemoryQuotaAccountant implements QuotaAccountant {
   private readonly recordedEntries: QuotaEntry[] = [];
 
-  record(entry: QuotaRecord): void {
-    validateEntry(entry);
+  record(entry: { operationId: string; operation: QuotaOperation }): void {
     this.recordedEntries.push({
       operationId: entry.operationId,
       operation: entry.operation,
       estimatedUnits: YOUTUBE_QUOTA_COSTS[entry.operation],
       timestamp: new Date().toISOString(),
-      ...(entry.channelId ? { channelId: entry.channelId } : {}),
     });
   }
 
@@ -111,7 +80,6 @@ export function getQuotaBucketStart(
 
 export type DurableQuotaAccountantOptions = {
   userId?: string;
-  channelId?: string;
   timezone?: string;
   now?: () => Date;
   repository?: QuotaUsageRepository;
@@ -119,87 +87,53 @@ export type DurableQuotaAccountantOptions = {
 };
 
 export class DurableQuotaAccountant extends InMemoryQuotaAccountant {
-  private readonly pending: InsertQuotaUsageInput[] = [];
+  private readonly pending: Promise<void>[] = [];
   private readonly repository: QuotaUsageRepository;
   private readonly userId: string | undefined;
-  private readonly channelId: string | undefined;
   private readonly timezone: string;
   private readonly now: () => Date;
   private readonly onPersistenceError: (error: unknown) => void;
-  private flushInFlight: Promise<void> | undefined;
-  private flushRequested = false;
 
   constructor(options: DurableQuotaAccountantOptions = {}) {
     super();
     this.repository = options.repository ?? quotaUsageRepository;
     this.userId = options.userId;
-    this.channelId = options.channelId;
     this.timezone = resolveQuotaTimezone(options.timezone);
     this.now = options.now ?? (() => new Date());
     this.onPersistenceError = options.onPersistenceError ?? (() => undefined);
   }
 
-  override entries(): readonly QuotaEntry[] {
-    return super
-      .entries()
-      .map((entry) =>
-        this.channelId === undefined
-          ? entry
-          : { ...entry, channelId: this.channelId },
-      );
-  }
-
-  override record(entry: QuotaRecord): void {
+  override record(entry: {
+    operationId: string;
+    operation: QuotaOperation;
+  }): void {
     super.record(entry);
     const recordedAt = this.now();
-    this.pending.push({
-      scopeType: this.userId ? "user" : "global",
-      scopeId: this.userId ?? null,
-      channelId: entry.channelId ?? this.channelId ?? null,
-      bucketStart: getQuotaBucketStart(recordedAt, this.timezone),
-      operation: entry.operation,
-      estimatedUnits: YOUTUBE_QUOTA_COSTS[entry.operation],
-      operationId: entry.operationId,
-      recordedAt: recordedAt.toISOString(),
-    });
-    void this.flush().catch(() => undefined);
+    const pending = Promise.resolve()
+      .then(() =>
+        this.repository.insert({
+          scopeType: this.userId ? "user" : "global",
+          scopeId: this.userId ?? null,
+          bucketStart: getQuotaBucketStart(recordedAt, this.timezone),
+          operation: entry.operation,
+          estimatedUnits: YOUTUBE_QUOTA_COSTS[entry.operation],
+          operationId: entry.operationId,
+          recordedAt: recordedAt.toISOString(),
+        }),
+      )
+      .catch((error: unknown) => {
+        try {
+          this.onPersistenceError(error);
+        } catch {
+          // Observability must never turn accounting into a service failure.
+        }
+      });
+    this.pending.push(pending);
   }
 
-  private async persist(entry: InsertQuotaUsageInput): Promise<void> {
-    try {
-      await this.repository.insert(entry);
-    } catch (error: unknown) {
-      try {
-        this.onPersistenceError(error);
-      } catch {
-        // Observability must never turn accounting into a service failure.
-      }
-    }
-  }
-
-  /**
-   * Persists the records queued before this call exactly once. Records added
-   * while persistence is in flight remain queued for a later flush. Calls
-   * made concurrently observe the same drained queue and do not duplicate it.
-   */
   async flush(): Promise<void> {
-    if (this.flushInFlight) {
-      this.flushRequested = true;
-      return this.flushInFlight;
-    }
-
     const pending = this.pending.splice(0);
-    this.flushInFlight = Promise.all(
-      pending.map((entry) => this.persist(entry)),
-    ).then(async () => {
-      this.flushInFlight = undefined;
-      if (this.flushRequested || this.pending.length > 0) {
-        this.flushRequested = false;
-        await this.flush();
-      }
-    });
-
-    return this.flushInFlight;
+    await Promise.all(pending);
   }
 }
 
@@ -212,7 +146,6 @@ export function createDurableQuotaAccountantFactory(
 ) {
   return (
     credentials: CredentialsWithCredentialRef,
-    channelId?: string,
   ): DurableQuotaAccountant => {
     const credentialRef = credentials.credentialRef;
     const userId =
@@ -224,6 +157,6 @@ export function createDurableQuotaAccountantFactory(
         ? credentialRef.userId
         : undefined;
 
-    return new DurableQuotaAccountant({ ...options, userId, channelId });
+    return new DurableQuotaAccountant({ ...options, userId });
   };
 }

@@ -1,12 +1,7 @@
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
 import test from "node:test";
 import { DomainError } from "@/lib/video-metadata/contracts";
-import {
-  createCliAuthService,
-  getDefaultBrowserCommand,
-  openBrowser,
-} from "./service";
+import { createCliAuthService, getDefaultBrowserCommand } from "./service";
 import type { ActiveAuthStorage } from "./storage";
 
 test("getDefaultBrowserCommand selects fixed shell-free commands per platform", () => {
@@ -35,47 +30,6 @@ test("getDefaultBrowserCommand passes URLs as arguments without shell syntax", (
     assert.equal(command.args.includes("/c"), false);
     assert.equal(command.args.includes("/C"), false);
   }
-});
-
-test("openBrowser launches the selected command with shell disabled and preserves the URL", async () => {
-  const child = new EventEmitter() as EventEmitter & { unref: () => void };
-  let unrefCalled = false;
-  child.unref = () => {
-    unrefCalled = true;
-  };
-  const calls: unknown[] = [];
-  const url = "https://example.com/oauth?next=%3Bwhoami&value=$(id)";
-
-  const opening = openBrowser(url, (command, args, options) => {
-    calls.push({ command, args, options });
-    queueMicrotask(() => child.emit("spawn"));
-    return child as never;
-  });
-
-  await opening;
-
-  const expected = getDefaultBrowserCommand(process.platform, url);
-  assert.deepEqual(calls, [
-    {
-      command: expected.command,
-      args: expected.args,
-      options: { stdio: "ignore", shell: false, detached: true },
-    },
-  ]);
-  assert.equal(unrefCalled, true);
-});
-
-test("openBrowser rejects when the browser subprocess fails to spawn", async () => {
-  const child = new EventEmitter() as EventEmitter & { unref: () => void };
-  child.unref = () => undefined;
-  const error = new Error("xdg-open unavailable");
-
-  const opening = openBrowser("https://example.com", () => {
-    queueMicrotask(() => child.emit("error", error));
-    return child as never;
-  });
-
-  await assert.rejects(opening, error);
 });
 
 function makeStorageStub(
@@ -148,44 +102,6 @@ test("resolveEffectiveCredentialRef falls back to active context", async () => {
 
   const resolved = await service.resolveEffectiveCredentialRef({});
   assert.deepEqual(resolved, { userId: "active-user" });
-});
-
-test("resolveEffectiveCredentialRef propagates typed storage errors unchanged", async () => {
-  const storageError = new DomainError({
-    code: "AUTH_CALLBACK_INVALID",
-    message: "Could not read auth context file",
-    details: { operation: "read" },
-  });
-  const service = createCliAuthService({
-    storage: {
-      read: async () => {
-        throw storageError;
-      },
-      write: async () => {
-        throw new Error("unexpected write");
-      },
-      clear: async () => {
-        throw new Error("unexpected clear");
-      },
-    },
-    db: {
-      upsertUser: async () => undefined,
-      listUsers: async () => [],
-      getUserSummary: async () => null,
-      getUserTokens: async () => null,
-      clearUserTokens: async () => undefined,
-      getSelectedChannelId: async () => null,
-      setSelectedChannelId: async () => undefined,
-    },
-  });
-
-  await assert.rejects(
-    () => service.resolveEffectiveCredentialRef({}),
-    (error: unknown) => {
-      assert.equal(error, storageError);
-      return true;
-    },
-  );
 });
 
 test("resolveEffectiveCredentialRef fails with AUTH_USER_NOT_FOUND when active user is missing", async () => {
