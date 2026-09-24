@@ -118,6 +118,18 @@ export type MetadataUpdateRequest = {
   localizations: Record<string, LocaleMetadata>;
 };
 
+export type MetadataConfirmationBaseline = {
+  snippet: Record<string, unknown>;
+  localizations: Record<string, LocaleMetadata>;
+};
+
+export type MetadataConfirmationItem = {
+  videoId: string;
+  proposedTitle: string;
+  proposedDescription: string;
+  baseline: MetadataConfirmationBaseline;
+};
+
 export type MetadataSyncProposal = {
   targetLanguage: string;
   languageSource: MetadataLanguageSource;

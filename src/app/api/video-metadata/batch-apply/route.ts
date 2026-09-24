@@ -6,13 +6,13 @@ import { createVideoMetadataCore } from "@/lib/video-metadata";
 import { getVideoMetadataErrorStatus } from "../error-status";
 import { parseVideoMetadataJsonBody } from "../parse-json-body";
 
-type TranscriptRouteDeps = {
+type BatchApplyRouteDeps = {
   getSession: () => Promise<{ user?: { id?: string | null } } | null>;
-  core: Pick<ReturnType<typeof createVideoMetadataCore>, "getTranscript">;
+  core: Pick<ReturnType<typeof createVideoMetadataCore>, "executeMetadataBatch">;
 };
 
-export function createTranscriptPostHandler(
-  deps: TranscriptRouteDeps = {
+export function createBatchApplyPostHandler(
+  deps: BatchApplyRouteDeps = {
     getSession: () => getServerSession(authOptions),
     core: createVideoMetadataCore(),
   }
@@ -25,36 +25,24 @@ export function createTranscriptPostHandler(
 
     try {
       const payload = await parseVideoMetadataJsonBody(request);
-
-      const result = await deps.core.getTranscript({
+      const result = await deps.core.executeMetadataBatch({
         ...payload,
         credentialRef: { userId: session.user.id },
       });
-
       return NextResponse.json(result);
     } catch (error) {
       if (error instanceof DomainError) {
         return NextResponse.json(
-          {
-            error: error.code,
-            message: error.message,
-            details: error.details,
-          },
-          {
-            status: getVideoMetadataErrorStatus(error.code),
-          }
+          { error: error.code, message: error.message, details: error.details },
+          { status: getVideoMetadataErrorStatus(error.code) }
         );
       }
-
       return NextResponse.json(
-        {
-          error: "internal_error",
-          message: error instanceof Error ? error.message : "Unknown error",
-        },
+        { error: "internal_error", message: error instanceof Error ? error.message : "Unknown error" },
         { status: 500 }
       );
     }
   };
 }
 
-export const POST = createTranscriptPostHandler();
+export const POST = createBatchApplyPostHandler();

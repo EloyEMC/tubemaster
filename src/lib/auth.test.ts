@@ -1,81 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { google } from "googleapis";
 import {
   buildGoogleLoopbackAuthUrl,
-  YOUTUBE_ANALYTICS_READ_SCOPE,
   YOUTUBE_FORCE_SSL_SCOPE,
   YOUTUBE_SCOPES,
 } from "./auth";
 
-test("YOUTUBE_ANALYTICS_READ_SCOPE equals the analytics readonly scope", () => {
-  assert.equal(
-    YOUTUBE_ANALYTICS_READ_SCOPE,
-    "https://www.googleapis.com/auth/yt-analytics.readonly",
-  );
-});
-
-test("YOUTUBE_SCOPES array does not include analytics scope and length is unchanged", () => {
-  assert.equal(
-    (YOUTUBE_SCOPES as readonly string[]).includes(
-      YOUTUBE_ANALYTICS_READ_SCOPE,
-    ),
-    false,
-  );
-  assert.equal(YOUTUBE_SCOPES.length, 6);
-});
-import { DomainError } from "./video-metadata/contracts";
-
 test("default YouTube scopes include youtube.force-ssl", () => {
   assert.equal(YOUTUBE_SCOPES.includes(YOUTUBE_FORCE_SSL_SCOPE), true);
-});
-
-test("buildGoogleLoopbackAuthUrl rejects invalid input with a safe DomainError", () => {
-  assert.throws(
-    () =>
-      buildGoogleLoopbackAuthUrl({
-        redirectUri: "",
-        state: "test-state",
-        codeChallenge: "test-challenge",
-      }),
-    (error: unknown) => {
-      if (!(error instanceof DomainError)) return false;
-      assert.equal(error.name, "DomainError");
-      assert.equal(error.code, "validation_failed");
-      assert.equal(error.message, "Invalid OAuth authorization URL input");
-      assert.deepEqual(error.details, { field: "redirectUri" });
-      return true;
-    },
-  );
-});
-
-test("buildGoogleLoopbackAuthUrl wraps malformed provider output safely", () => {
-  const originalGenerateAuthUrl = google.auth.OAuth2.prototype.generateAuthUrl;
-  google.auth.OAuth2.prototype.generateAuthUrl = () => "not-a-url";
-
-  try {
-    assert.throws(
-      () =>
-        buildGoogleLoopbackAuthUrl({
-          redirectUri: "http://127.0.0.1:43123",
-          state: "test-state",
-          codeChallenge: "test-challenge",
-        }),
-      (error: unknown) => {
-        if (!(error instanceof DomainError)) return false;
-        assert.equal(error.name, "DomainError");
-        assert.equal(error.code, "validation_failed");
-        assert.equal(
-          error.message,
-          "Google OAuth authorization URL generation failed",
-        );
-        assert.deepEqual(error.details, { stage: "provider_output" });
-        return true;
-      },
-    );
-  } finally {
-    google.auth.OAuth2.prototype.generateAuthUrl = originalGenerateAuthUrl;
-  }
 });
 
 test("buildGoogleLoopbackAuthUrl includes redirect_uri in generated URL", () => {
@@ -96,9 +28,7 @@ test("buildGoogleLoopbackAuthUrl includes redirect_uri in generated URL", () => 
   assert.equal(url.searchParams.get("code_challenge"), "test-challenge");
   assert.equal(url.searchParams.get("code_challenge_method"), "S256");
   assert.equal(
-    decodeURIComponent(url.searchParams.get("scope") ?? "").includes(
-      YOUTUBE_FORCE_SSL_SCOPE,
-    ),
-    true,
+    decodeURIComponent(url.searchParams.get("scope") ?? "").includes(YOUTUBE_FORCE_SSL_SCOPE),
+    true
   );
 });

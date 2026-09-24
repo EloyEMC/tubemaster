@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-import type { QuotaAccountant, QuotaOperation } from "../quota/accountant";
+import { createHash } from "node:crypto";
 import { YOUTUBE_READ_SCOPE, YOUTUBE_WRITE_SCOPE } from "@/lib/auth";
 import {
   DomainError,
@@ -16,10 +15,16 @@ import {
 import {
   applyMetadataInputSchema,
   applyMetadataOutputSchema,
+  confirmMetadataBatchInputSchema,
+  confirmMetadataBatchOutputSchema,
+  executeMetadataBatchInputSchema,
+  executeMetadataBatchOutputSchema,
   listVideosInputSchema,
   listVideosOutputSchema,
   metadataDraftSchema,
   parseWithSchema,
+  previewMetadataBatchInputSchema,
+  previewMetadataBatchOutputSchema,
   previewMetadataInputSchema,
   previewMetadataOutputSchema,
   transcriptInputSchema,
@@ -38,14 +43,10 @@ type ServiceDependencies = {
       credentials: ResolvedCredentials;
       channelId?: string;
       maxResults?: number;
-      operationId?: string;
-      quotaAccountant?: QuotaAccountant;
     }): Promise<VideoMetadataItem[]>;
     getVideo(args: {
       credentials: ResolvedCredentials;
       videoId: string;
-      operationId?: string;
-      quotaAccountant?: QuotaAccountant;
     }): Promise<VideoMetadataItem>;
     getVideoMetadataContext(args: {
       credentials: ResolvedCredentials;
@@ -60,9 +61,6 @@ type ServiceDependencies = {
     getTranscript(args: {
       credentials: ResolvedCredentials;
       videoId: string;
-      operationId?: string;
-      quotaAccountant?: QuotaAccountant;
-      channelId?: string;
     }): Promise<TranscriptResult>;
   };
   metadataGenerator: {
@@ -90,11 +88,6 @@ type ServiceDependencies = {
   channelSelectionStore: {
     setSelectedChannelId(userId: string, channelId: string): Promise<void>;
   };
-  operationIdFactory?: () => string;
-  quotaAccountant?: QuotaAccountant;
-  quotaAccountantFactory?: (
-    credentials: ResolvedCredentials,
-  ) => QuotaAccountant;
 };
 
 export type { ServiceDependencies };
@@ -106,36 +99,6 @@ function mapUnknownError(error: unknown, fallbackCode: DomainError["code"]) {
     code: fallbackCode,
     message: error instanceof Error ? error.message : "Unknown error",
   });
-}
-
-function resolveQuotaAccountant(
-  deps: ServiceDependencies,
-  credentials: ResolvedCredentials,
-): QuotaAccountant | undefined {
-  return deps.quotaAccountant ?? deps.quotaAccountantFactory?.(credentials);
-}
-
-function safeLog(
-  logger: ServiceDependencies["logger"],
-  level: "info" | "error",
-  payload: { event: string; context: Record<string, unknown> },
-) {
-  try {
-    logger[level](payload);
-  } catch {
-    // Logging must never change the operation result.
-  }
-}
-
-function safeAccount(
-  accountant: QuotaAccountant | undefined,
-  entry: { operationId: string; operation: QuotaOperation; channelId?: string },
-) {
-  try {
-    accountant?.record(entry);
-  } catch {
-    // Quota accounting must never change the operation result.
-  }
 }
 
 function removeReadOnlySnippetFields(snippet: Record<string, unknown>) {
@@ -186,6 +149,53 @@ function resolveTargetLanguage(context: VideoMetadataContext): {
       localizationLocales,
     },
   });
+}
+
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, canonicalize(entry)])
+    );
+  }
+  return value;
+}
+
+function canonicalJson(value: unknown) {
+  return JSON.stringify(canonicalize(value));
+}
+
+function createConfirmationPayload(input: {
+  items: Array<{
+    videoId: string;
+    proposedTitle: string;
+    proposedDescription: string;
+    baseline: {
+      snippet: Record<string, unknown>;
+      localizations: Record<string, { title: string; description: string }>;
+    };
+  }>;
+  expectedChannelId: string;
+  confirmed: true;
+}) {
+  return {
+    items: input.items,
+    expectedChannelId: input.expectedChannelId,
+    confirmed: input.confirmed,
+  };
+}
+
+function createConfirmationId(payload: ReturnType<typeof createConfirmationPayload>) {
+  return createHash("sha256").update(canonicalJson(payload)).digest("hex");
+}
+
+function metadataBaselineFromContext(context: VideoMetadataContext) {
+  return {
+    snippet: removeReadOnlySnippetFields(context.snippet),
+    localizations: context.localizations,
+  };
 }
 
 function buildMetadataSyncProposal(args: {
@@ -242,17 +252,7 @@ function buildMetadataSyncProposal(args: {
 export function createVideoMetadataServices(deps: ServiceDependencies) {
   return {
     async listVideos(input: unknown) {
-      const parsedInput = parseWithSchema(
-        listVideosInputSchema,
-        input,
-        "list videos input",
-      );
-      const operationId = deps.operationIdFactory?.() ?? randomUUID();
-      const traceContext = { operationId };
-      safeLog(deps.logger, "info", {
-        event: "video_metadata.list.started",
-        context: traceContext,
-      });
+      const parsedInput = parseWithSchema(listVideosInputSchema, input, "list videos input");
 
       try {
         const credentials = await deps.authResolver.resolve({
@@ -260,118 +260,189 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
           requiredScopes: [YOUTUBE_READ_SCOPE],
         });
 
-        const accountant = resolveQuotaAccountant(deps, credentials);
         const videos = await deps.youtubeApi.listVideos({
           credentials,
           channelId: parsedInput.channelId,
           maxResults: parsedInput.maxResults,
-          operationId,
-          quotaAccountant: accountant,
         });
 
         const output = parseWithSchema(
           listVideosOutputSchema,
           { videos },
-          "list videos output",
+          "list videos output"
         );
 
-        safeLog(deps.logger, "info", {
+        deps.logger.info({
           event: "video_metadata.list.success",
-          context: { ...traceContext, count: output.videos.length },
+          context: { count: output.videos.length, channelId: parsedInput.channelId ?? "default" },
         });
 
         return output;
       } catch (error) {
         const mapped = mapUnknownError(error, "unauthorized");
-        safeLog(deps.logger, "error", {
-          event: "video_metadata.list.error",
-          context: { ...traceContext, code: mapped.code },
-        });
+        deps.logger.error({ event: "video_metadata.list.error", context: { code: mapped.code } });
         throw mapped;
       }
     },
 
     async getTranscript(input: unknown) {
-      const parsedInput = parseWithSchema(
-        transcriptInputSchema,
-        input,
-        "transcript input",
-      );
-      const operationId = deps.operationIdFactory?.() ?? randomUUID();
-      const traceContext = { operationId, videoId: parsedInput.videoId };
-      safeLog(deps.logger, "info", {
-        event: "video_metadata.transcript.started",
-        context: traceContext,
-      });
+      const parsedInput = parseWithSchema(transcriptInputSchema, input, "transcript input");
 
       try {
         const credentials = await deps.authResolver.resolve({
           credentialRef: parsedInput.credentialRef,
           requiredScopes: [YOUTUBE_READ_SCOPE],
         });
-        const accountant = resolveQuotaAccountant(deps, credentials);
 
         const transcript = await deps.transcriptProvider.getTranscript({
           credentials,
           videoId: parsedInput.videoId,
-          operationId,
-          quotaAccountant: accountant,
         });
 
         const output = parseWithSchema(
           transcriptOutputSchema,
           { transcript },
-          "transcript output",
+          "transcript output"
         );
 
-        safeLog(deps.logger, "info", {
-          event: "video_metadata.transcript.success",
-          context: { ...traceContext, status: output.transcript.status },
-        });
         return output;
       } catch (error) {
-        const mapped = mapUnknownError(error, "transcript_unavailable");
-        safeLog(deps.logger, "error", {
-          event: "video_metadata.transcript.error",
-          context: { ...traceContext, code: mapped.code },
-        });
-        throw mapped;
+        throw mapUnknownError(error, "transcript_unavailable");
       }
     },
 
-    async previewMetadata(input: unknown) {
+    async confirmMetadataBatch(input: unknown) {
+      const parsedInput = parseWithSchema(
+        confirmMetadataBatchInputSchema,
+        input,
+        "batch metadata confirmation input"
+      );
+      const canonicalPayload = createConfirmationPayload(parsedInput);
+      const confirmationId = createConfirmationId(canonicalPayload);
+
+          return parseWithSchema(
+            confirmMetadataBatchOutputSchema,
+            { ...canonicalPayload, confirmationId },
+            "batch metadata confirmation output"
+          );
+        },
+
+        async executeMetadataBatch(input: unknown) {
+          const parsedInput = parseWithSchema(
+            executeMetadataBatchInputSchema,
+            input,
+            "batch metadata execution input"
+          );
+          const canonicalPayload = createConfirmationPayload(parsedInput);
+          if (createConfirmationId(canonicalPayload) !== parsedInput.confirmationId) {
+            throw new DomainError({
+              code: "validation_failed",
+              message: "Confirmation envelope does not match confirmationId",
+            });
+          }
+
+          let credentials: ResolvedCredentials;
+          try {
+            credentials = await deps.authResolver.resolve({
+              credentialRef: parsedInput.credentialRef,
+              requiredScopes: [YOUTUBE_WRITE_SCOPE],
+            });
+          } catch (error) {
+            throw mapUnknownError(error, "unauthorized");
+          }
+
+          try {
+            const guardrail = await deps.writeContext.assertWriteChannel({
+              credentialRef: parsedInput.credentialRef,
+              credentials,
+              expectedChannelId: parsedInput.expectedChannelId,
+            });
+
+            const proposals: MetadataSyncProposal[] = [];
+            for (const item of parsedInput.items) {
+              const context = await deps.youtubeApi.getVideoMetadataContext({
+                credentials,
+                videoId: item.videoId,
+              });
+              const actualChannelId = context.snippet.channelId;
+              if (actualChannelId !== parsedInput.expectedChannelId) {
+                throw new DomainError({
+                  code: "WRITE_CHANNEL_MISMATCH",
+                  message: "Video does not belong to the expected write channel",
+                  details: { videoId: item.videoId, expectedChannelId: parsedInput.expectedChannelId, actualChannelId },
+                });
+              }
+              const currentBaseline = metadataBaselineFromContext(context);
+              if (canonicalJson(currentBaseline) !== canonicalJson(item.baseline)) {
+                throw new DomainError({
+                  code: "validation_failed",
+                  message: "Confirmed metadata is stale because the provider metadata changed",
+                  details: { videoId: item.videoId },
+                });
+              }
+              if (
+                context.snippet.title === item.proposedTitle &&
+                context.snippet.description === item.proposedDescription
+              ) {
+                throw new DomainError({
+                  code: "validation_failed",
+                  message: "Confirmed metadata is stale because it is already applied",
+                  details: { videoId: item.videoId },
+                });
+              }
+              proposals.push(buildMetadataSyncProposal({
+                videoId: item.videoId,
+                context,
+                draft: { finalTitle: item.proposedTitle, description: item.proposedDescription, promptVersion: "confirmed-batch" },
+              }));
+            }
+
+            const outcomes: Array<{ videoId: string; status: "success" | "provider-failure"; error?: { code: string; message: string } }> = [];
+            for (const proposal of proposals) {
+              try {
+                await deps.youtubeApi.applyMetadataProposal({ credentials, proposal });
+                outcomes.push({ videoId: proposal.update.videoId, status: "success" });
+              } catch (error) {
+                const mapped = mapUnknownError(error, "update_failed");
+                outcomes.push({ videoId: proposal.update.videoId, status: "provider-failure", error: { code: mapped.code, message: mapped.message } });
+              }
+            }
+
+            if (guardrail.shouldPersistSelection && guardrail.userId) {
+              await deps.channelSelectionStore.setSelectedChannelId(guardrail.userId, guardrail.expectedChannelId);
+            }
+
+            return parseWithSchema(
+              executeMetadataBatchOutputSchema,
+              { confirmationId: parsedInput.confirmationId, expectedChannelId: parsedInput.expectedChannelId, outcomes },
+              "batch metadata execution output"
+            );
+          } catch (error) {
+            throw mapUnknownError(error, "update_failed");
+          }
+        },
+
+        async previewMetadata(input: unknown) {
       const parsedInput = parseWithSchema(
         previewMetadataInputSchema,
         input,
-        "preview metadata input",
+        "preview metadata input"
       );
-      const operationId = deps.operationIdFactory?.() ?? randomUUID();
-
-      const traceContext = { operationId, videoId: parsedInput.videoId };
-      safeLog(deps.logger, "info", {
-        event: "video_metadata.preview.started",
-        context: traceContext,
-      });
 
       try {
         const credentials = await deps.authResolver.resolve({
           credentialRef: parsedInput.credentialRef,
           requiredScopes: [YOUTUBE_READ_SCOPE],
         });
-        const accountant = resolveQuotaAccountant(deps, credentials);
 
         const video = await deps.youtubeApi.getVideo({
           credentials,
           videoId: parsedInput.videoId,
-          operationId,
-          quotaAccountant: accountant,
         });
 
         const transcriptResult = await deps.transcriptProvider.getTranscript({
           credentials,
           videoId: parsedInput.videoId,
-          operationId,
-          quotaAccountant: accountant,
         });
 
         const draft = await deps.metadataGenerator.generate({
@@ -387,30 +458,70 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
             transcript: transcriptResult,
             draft,
           },
-          "preview metadata output",
+          "preview metadata output"
         );
 
-        safeLog(deps.logger, "info", {
+        deps.logger.info({
           event: "video_metadata.preview.success",
-          context: { ...traceContext, status: output.transcript.status },
+          context: { videoId: parsedInput.videoId, transcriptStatus: output.transcript.status },
         });
 
         return output;
       } catch (error) {
-        const mapped = mapUnknownError(error, "generation_failed");
-        safeLog(deps.logger, "error", {
-          event: "video_metadata.preview.error",
-          context: { ...traceContext, code: mapped.code },
-        });
-        throw mapped;
+        throw mapUnknownError(error, "generation_failed");
       }
     },
 
-    async applyMetadata(input: unknown): Promise<MetadataApplyResult> {
+        async previewMetadataBatch(input: unknown) {
+          const parsedInput = parseWithSchema(
+            previewMetadataBatchInputSchema,
+            input,
+            "batch preview metadata input"
+          );
+
+          try {
+            const credentials = await deps.authResolver.resolve({
+              credentialRef: parsedInput.credentialRef,
+              requiredScopes: [YOUTUBE_READ_SCOPE],
+            });
+
+            const items = [];
+            for (const videoId of parsedInput.videoIds) {
+              const video = await deps.youtubeApi.getVideo({ credentials, videoId });
+              const transcript = await deps.transcriptProvider.getTranscript({
+                credentials,
+                videoId,
+              });
+              const draft = await deps.metadataGenerator.generate({
+                video,
+                transcript,
+                editorialPrompt: parsedInput.editorialPrompt,
+              });
+
+              items.push(
+                parseWithSchema(
+                  previewMetadataOutputSchema,
+                  { video, transcript, draft },
+                  "preview metadata output"
+                )
+              );
+            }
+
+            return parseWithSchema(
+              previewMetadataBatchOutputSchema,
+              { items },
+              "batch preview metadata output"
+            );
+          } catch (error) {
+            throw mapUnknownError(error, "generation_failed");
+          }
+        },
+
+        async applyMetadata(input: unknown): Promise<MetadataApplyResult> {
       const parsedInput = parseWithSchema(
         applyMetadataInputSchema,
         input,
-        "apply metadata input",
+        "apply metadata input"
       );
 
       const draft = parseWithSchema(
@@ -420,43 +531,21 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
           description: parsedInput.description,
           promptVersion: "manual-input",
         },
-        "metadata draft",
+        "metadata draft"
       );
-      const operationId = deps.operationIdFactory?.() ?? randomUUID();
-      const traceContext = {
-        operationId,
-        dryRun: parsedInput.dryRun,
-        expectedChannelId: parsedInput.expectedChannelId,
-        videoId: parsedInput.videoId,
-      };
-
-      safeLog(deps.logger, "info", {
-        event: "video_metadata.apply.started",
-        context: traceContext,
-      });
 
       try {
         const credentials = await deps.authResolver.resolve({
           credentialRef: parsedInput.credentialRef,
           requiredScopes: [YOUTUBE_WRITE_SCOPE],
         });
-        const accountant = resolveQuotaAccountant(deps, credentials);
 
-        safeAccount(accountant, {
-          operationId,
-          operation: "channels.list",
-        });
         const guardrail = await deps.writeContext.assertWriteChannel({
           credentialRef: parsedInput.credentialRef,
           credentials,
           expectedChannelId: parsedInput.expectedChannelId,
         });
 
-        safeAccount(accountant, {
-          operationId,
-          operation: "videos.list",
-          channelId: guardrail.expectedChannelId,
-        });
         const metadataContext = await deps.youtubeApi.getVideoMetadataContext({
           credentials,
           videoId: parsedInput.videoId,
@@ -469,7 +558,7 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
         });
 
         if (parsedInput.dryRun) {
-          const output = parseWithSchema(
+          return parseWithSchema(
             applyMetadataOutputSchema,
             {
               dryRun: true,
@@ -479,22 +568,10 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
               snippet: proposal.snippet,
               localizations: proposal.localizations,
             },
-            "apply metadata output",
+            "apply metadata output"
           );
-
-          safeLog(deps.logger, "info", {
-            event: "video_metadata.apply.dry_run",
-            context: traceContext,
-          });
-
-          return output;
         }
 
-        safeAccount(accountant, {
-          operationId,
-          operation: "videos.update",
-          channelId: guardrail.expectedChannelId,
-        });
         await deps.youtubeApi.applyMetadataProposal({
           credentials,
           proposal,
@@ -503,7 +580,7 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
         if (guardrail.shouldPersistSelection && guardrail.userId) {
           await deps.channelSelectionStore.setSelectedChannelId(
             guardrail.userId,
-            guardrail.expectedChannelId,
+            guardrail.expectedChannelId
           );
         }
 
@@ -517,22 +594,21 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
             snippet: proposal.snippet,
             localizations: proposal.localizations,
           },
-          "apply metadata output",
+          "apply metadata output"
         );
 
-        safeLog(deps.logger, "info", {
+        deps.logger.info({
           event: "video_metadata.apply.success",
-          context: traceContext,
+          context: {
+            videoId: parsedInput.videoId,
+            dryRun: false,
+            targetLanguage: proposal.targetLanguage,
+          },
         });
 
         return output;
       } catch (error) {
-        const mapped = mapUnknownError(error, "update_failed");
-        safeLog(deps.logger, "error", {
-          event: "video_metadata.apply.error",
-          context: { ...traceContext, code: mapped.code },
-        });
-        throw mapped;
+        throw mapUnknownError(error, "update_failed");
       }
     },
   };
