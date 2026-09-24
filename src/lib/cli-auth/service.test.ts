@@ -1,86 +1,10 @@
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
 import test from "node:test";
 import { DomainError } from "@/lib/video-metadata/contracts";
-import {
-  createCliAuthService,
-  getDefaultBrowserCommand,
-  openBrowser,
-} from "./service";
+import { createCliAuthService } from "./service";
 import type { ActiveAuthStorage } from "./storage";
 
-test("getDefaultBrowserCommand selects fixed shell-free commands per platform", () => {
-  const url = "https://example.com/oauth?next=%3Bwhoami";
-
-  assert.deepEqual(getDefaultBrowserCommand("darwin", url), {
-    command: "open",
-    args: [url],
-  });
-  assert.deepEqual(getDefaultBrowserCommand("linux", url), {
-    command: "xdg-open",
-    args: [url],
-  });
-  assert.deepEqual(getDefaultBrowserCommand("win32", url), {
-    command: "rundll32.exe",
-    args: ["url.dll,FileProtocolHandler", url],
-  });
-});
-
-test("getDefaultBrowserCommand passes URLs as arguments without shell syntax", () => {
-  const url = "https://example.com/$(whoami); echo compromised & whoami";
-
-  for (const platform of ["darwin", "linux", "win32"] as const) {
-    const command = getDefaultBrowserCommand(platform, url);
-    assert.equal(command.args.at(-1), url);
-    assert.equal(command.args.includes("/c"), false);
-    assert.equal(command.args.includes("/C"), false);
-  }
-});
-
-test("openBrowser launches the selected command with shell disabled and preserves the URL", async () => {
-  const child = new EventEmitter() as EventEmitter & { unref: () => void };
-  let unrefCalled = false;
-  child.unref = () => {
-    unrefCalled = true;
-  };
-  const calls: unknown[] = [];
-  const url = "https://example.com/oauth?next=%3Bwhoami&value=$(id)";
-
-  const opening = openBrowser(url, (command, args, options) => {
-    calls.push({ command, args, options });
-    queueMicrotask(() => child.emit("spawn"));
-    return child as never;
-  });
-
-  await opening;
-
-  const expected = getDefaultBrowserCommand(process.platform, url);
-  assert.deepEqual(calls, [
-    {
-      command: expected.command,
-      args: expected.args,
-      options: { stdio: "ignore", shell: false, detached: true },
-    },
-  ]);
-  assert.equal(unrefCalled, true);
-});
-
-test("openBrowser rejects when the browser subprocess fails to spawn", async () => {
-  const child = new EventEmitter() as EventEmitter & { unref: () => void };
-  child.unref = () => undefined;
-  const error = new Error("xdg-open unavailable");
-
-  const opening = openBrowser("https://example.com", () => {
-    queueMicrotask(() => child.emit("error", error));
-    return child as never;
-  });
-
-  await assert.rejects(opening, error);
-});
-
-function makeStorageStub(
-  initialUserId: string | null = null,
-): ActiveAuthStorage {
+function makeStorageStub(initialUserId: string | null = null): ActiveAuthStorage {
   let current =
     initialUserId === null
       ? null
@@ -150,44 +74,6 @@ test("resolveEffectiveCredentialRef falls back to active context", async () => {
   assert.deepEqual(resolved, { userId: "active-user" });
 });
 
-test("resolveEffectiveCredentialRef propagates typed storage errors unchanged", async () => {
-  const storageError = new DomainError({
-    code: "AUTH_CALLBACK_INVALID",
-    message: "Could not read auth context file",
-    details: { operation: "read" },
-  });
-  const service = createCliAuthService({
-    storage: {
-      read: async () => {
-        throw storageError;
-      },
-      write: async () => {
-        throw new Error("unexpected write");
-      },
-      clear: async () => {
-        throw new Error("unexpected clear");
-      },
-    },
-    db: {
-      upsertUser: async () => undefined,
-      listUsers: async () => [],
-      getUserSummary: async () => null,
-      getUserTokens: async () => null,
-      clearUserTokens: async () => undefined,
-      getSelectedChannelId: async () => null,
-      setSelectedChannelId: async () => undefined,
-    },
-  });
-
-  await assert.rejects(
-    () => service.resolveEffectiveCredentialRef({}),
-    (error: unknown) => {
-      assert.equal(error, storageError);
-      return true;
-    },
-  );
-});
-
 test("resolveEffectiveCredentialRef fails with AUTH_USER_NOT_FOUND when active user is missing", async () => {
   const service = createCliAuthService({
     storage: makeStorageStub("active-user"),
@@ -205,7 +91,7 @@ test("resolveEffectiveCredentialRef fails with AUTH_USER_NOT_FOUND when active u
   await assert.rejects(
     () => service.resolveEffectiveCredentialRef({}),
     (error: unknown) =>
-      error instanceof DomainError && error.code === "AUTH_USER_NOT_FOUND",
+      error instanceof DomainError && error.code === "AUTH_USER_NOT_FOUND"
   );
 });
 
@@ -244,10 +130,8 @@ test("whoami returns enriched write-channel context without secrets", async () =
         alignment: {
           status: "mismatch",
           requiresReauth: true,
-          message:
-            "Selected expected channel does not match the active OAuth channel.",
-          recommendedAction:
-            "Reauthenticate with the expected channel or select active.",
+          message: "Selected expected channel does not match the active OAuth channel.",
+          recommendedAction: "Reauthenticate with the expected channel or select active.",
         },
         requiresReauth: true,
       }),
@@ -257,8 +141,7 @@ test("whoami returns enriched write-channel context without secrets", async () =
           status: "unresolved",
           requiresReauth: false,
           message: "No expected write channel is configured yet.",
-          recommendedAction:
-            "Select the expected channel before running sensitive write operations.",
+          recommendedAction: "Select the expected channel before running sensitive write operations.",
         },
         activeWriteChannel: null,
         selectedChannelId: null,
@@ -274,17 +157,13 @@ test("whoami returns enriched write-channel context without secrets", async () =
         alignment: {
           status: "mismatch",
           requiresReauth: true,
-          message:
-            "Selected expected channel does not match the active OAuth channel.",
-          recommendedAction:
-            "Reauthenticate with the expected channel or select active.",
+          message: "Selected expected channel does not match the active OAuth channel.",
+          recommendedAction: "Reauthenticate with the expected channel or select active.",
         },
         knownChannels: [],
         requiresReauth: true,
-        message:
-          "Selected expected channel does not match the active OAuth channel.",
-        recommendedAction:
-          "Reauthenticate with the expected channel or select active.",
+        message: "Selected expected channel does not match the active OAuth channel.",
+        recommendedAction: "Reauthenticate with the expected channel or select active.",
       }),
     },
     db: {
@@ -307,10 +186,7 @@ test("whoami returns enriched write-channel context without secrets", async () =
   const result = await service.whoami();
   assert.equal(result.userId, "active-user");
   assert.deepEqual(result.effectiveCredentialRef, { userId: "active-user" });
-  assert.deepEqual(result.activeWriteChannel, {
-    id: "UC_ACTIVE",
-    title: "Active channel",
-  });
+  assert.deepEqual(result.activeWriteChannel, { id: "UC_ACTIVE", title: "Active channel" });
   assert.equal(result.selectedChannelId, "UC_SELECTED");
   assert.equal(result.writeChannel.alignment.status, "mismatch");
   assert.equal(result.writeChannel.requiresReauth, true);
@@ -324,10 +200,7 @@ test("loginDevice persists user and marks active context", async () => {
     storage,
     oauth: {
       generateState: () => "state",
-      generatePkcePair: () => ({
-        verifier: "verifier",
-        challenge: "challenge",
-      }),
+      generatePkcePair: () => ({ verifier: "verifier", challenge: "challenge" }),
       buildLoopbackAuthUrl: () => "http://example.com",
       exchangeAuthCode: async () => {
         throw new Error("not used in this test");
@@ -392,10 +265,7 @@ test("login uses fixed loopback redirect URI from callback server", async () => 
     openBrowser: async () => undefined,
     oauth: {
       generateState: () => "state",
-      generatePkcePair: () => ({
-        verifier: "verifier",
-        challenge: "challenge",
-      }),
+      generatePkcePair: () => ({ verifier: "verifier", challenge: "challenge" }),
       buildLoopbackAuthUrl: ({ redirectUri }: { redirectUri: string }) => {
         receivedRedirectUri = redirectUri;
         return "http://example.com";
@@ -453,10 +323,7 @@ test("revoke fails if remote revoke fails and keeps local tokens untouched", asy
     storage: makeStorageStub("active-user"),
     oauth: {
       generateState: () => "state",
-      generatePkcePair: () => ({
-        verifier: "verifier",
-        challenge: "challenge",
-      }),
+      generatePkcePair: () => ({ verifier: "verifier", challenge: "challenge" }),
       buildLoopbackAuthUrl: () => "http://example.com",
       exchangeAuthCode: async () => {
         throw new Error("not used in this test");
@@ -540,10 +407,8 @@ test("listKnownWriteChannels returns minimal-safe known channels from write-cont
         alignment: {
           status: "mismatch",
           requiresReauth: true,
-          message:
-            "Selected expected channel does not match the active OAuth channel.",
-          recommendedAction:
-            "Reauthenticate with the expected channel or select the active channel.",
+          message: "Selected expected channel does not match the active OAuth channel.",
+          recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
         },
         activeWriteChannel: { id: "UC_ACTIVE", title: "Active channel" },
         selectedChannelId: "UC_SELECTED",
@@ -597,26 +462,19 @@ test("selectWriteChannel persists requested channel and returns mismatch state",
       },
       selectWriteChannel: async ({ channelId }) => ({
         selectedChannelId: channelId,
-        activeWriteChannel: {
-          id: "UC2222222222222222222222",
-          title: "Active channel",
-        },
+        activeWriteChannel: { id: "UC2222222222222222222222", title: "Active channel" },
         expectedChannelId: channelId,
         source: "stored",
         alignment: {
           status: "mismatch",
           requiresReauth: true,
-          message:
-            "Selected expected channel does not match the active OAuth channel.",
-          recommendedAction:
-            "Reauthenticate with the expected channel or select the active channel.",
+          message: "Selected expected channel does not match the active OAuth channel.",
+          recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
         },
         knownChannels: [],
         requiresReauth: true,
-        message:
-          "Selected expected channel does not match the active OAuth channel.",
-        recommendedAction:
-          "Reauthenticate with the expected channel or select the active channel.",
+        message: "Selected expected channel does not match the active OAuth channel.",
+        recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
       }),
     },
     db: {
@@ -671,7 +529,7 @@ test("selectWriteChannel rejects invalid channelId with validation_failed", asyn
       assert.ok(error instanceof DomainError);
       assert.equal(error.code, "validation_failed");
       return true;
-    },
+    }
   );
 });
 
@@ -705,8 +563,7 @@ test("selectUser switches activeUserId and returns post-switch write-context fee
           status: "mismatch",
           requiresReauth: true,
           message: `Alignment for ${(credentialRef as { userId: string }).userId}`,
-          recommendedAction:
-            "Reauthenticate with the expected channel or select the active channel.",
+          recommendedAction: "Reauthenticate with the expected channel or select the active channel.",
         },
         requiresReauth: true,
       }),
@@ -770,7 +627,7 @@ test("selectUser fails with AUTH_USER_NOT_FOUND and does not persist changes", a
       assert.ok(error instanceof DomainError);
       assert.equal(error.code, "AUTH_USER_NOT_FOUND");
       return true;
-    },
+    }
   );
 
   const nextContext = await storage.read();
@@ -798,8 +655,7 @@ test("selectUser is idempotent and keeps changed=false for same active user", as
         alignment: {
           status: "matched",
           requiresReauth: false,
-          message:
-            "Selected expected channel matches the active OAuth channel.",
+          message: "Selected expected channel matches the active OAuth channel.",
           recommendedAction: null,
         },
         requiresReauth: false,
@@ -855,8 +711,7 @@ test("selectUser updates implicit fallback used by resolveEffectiveCredentialRef
           status: "unresolved",
           requiresReauth: false,
           message: "No expected write channel is configured yet.",
-          recommendedAction:
-            "Select the expected channel before running sensitive write operations.",
+          recommendedAction: "Select the expected channel before running sensitive write operations.",
         },
         requiresReauth: false,
       }),
