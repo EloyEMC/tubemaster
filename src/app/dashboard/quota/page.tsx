@@ -2,13 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { formatQuotaBucketStart } from "./formatter";
 
 type QuotaSummary = {
   bucketStart: string;
   operation: string;
-  operationId: string;
-  channelId?: string;
   operationCount: number;
   estimatedUnits: number;
 };
@@ -19,6 +16,17 @@ type QuotaResponse = {
 };
 
 const numberFormatter = new Intl.NumberFormat("en-US");
+
+function formatBucketStart(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+}
 
 export default function QuotaPage() {
   const [summaries, setSummaries] = useState<QuotaSummary[]>([]);
@@ -136,8 +144,6 @@ export default function QuotaPage() {
                   <tr>
                     <th className="px-4 py-3 font-medium">Day</th>
                     <th className="px-4 py-3 font-medium">Operation</th>
-                    <th className="px-4 py-3 font-medium">Channel</th>
-                    <th className="px-4 py-3 font-medium">Operation ID</th>
                     <th className="px-4 py-3 text-right font-medium">
                       Operations
                     </th>
@@ -148,20 +154,12 @@ export default function QuotaPage() {
                 </thead>
                 <tbody className="divide-y divide-zinc-800">
                   {summaries.map((summary) => (
-                    <tr
-                      key={`${summary.bucketStart}-${summary.operation}-${summary.operationId}`}
-                    >
+                    <tr key={`${summary.bucketStart}-${summary.operation}`}>
                       <td className="px-4 py-3 text-zinc-300">
-                        {formatQuotaBucketStart(summary.bucketStart)}
+                        {formatBucketStart(summary.bucketStart)}
                       </td>
                       <td className="px-4 py-3 text-zinc-300">
                         {summary.operation}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-zinc-400">
-                        {summary.channelId ?? "—"}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-zinc-400">
-                        {summary.operationId}
                       </td>
                       <td className="px-4 py-3 text-right text-zinc-400">
                         {numberFormatter.format(summary.operationCount)}
