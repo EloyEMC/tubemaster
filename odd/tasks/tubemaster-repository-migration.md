@@ -20,6 +20,9 @@ Publish the current TubeMaster project under `EloyEMC/tubemaster` without losing
 - Target repository: `EloyEMC/tubemaster`
 - Local branch at planning time: `feature-2`
 - Target branch at planning time: `feature-2`
+- Migration commit: `6db339e5c64a600836245ec832b4c9f5720a1cda`
+- Target `feature-2` points to the migration commit.
+- Verification: `npm test` — 326 passed, 0 failed, 0 skipped.
 
 ## Risks
 The target repository is public and already contains a divergent history. Existing uncommitted changes must be preserved without staging unrelated files or exposing secrets.
