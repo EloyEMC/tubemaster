@@ -1,5 +1,4 @@
 import { getSelectedChannelId, setSelectedChannelId } from "@/lib/db";
-import { createDurableQuotaAccountantFactory } from "@/lib/quota/accountant";
 import { createWriteContextYoutubeApiAdapter } from "@/lib/write-context/adapters/youtube-api";
 import { createWriteContextService } from "@/lib/write-context/service";
 import { createMetadataGenerator } from "./adapters/metadata-generator";
@@ -34,7 +33,6 @@ export function createVideoMetadataCore() {
     channelSelectionStore: {
       setSelectedChannelId,
     },
-    quotaAccountantFactory: createDurableQuotaAccountantFactory(),
   });
 
   return services;

@@ -107,6 +107,67 @@ export const previewMetadataOutputSchema = z
   })
   .strict();
 
+const youtubeVideoIdSchema = z.string().regex(/^[A-Za-z0-9_-]{11}$/, "Invalid YouTube video ID");
+const youtubeChannelIdSchema = z.string().regex(/^UC[A-Za-z0-9_-]{22}$/, "Invalid YouTube channel ID");
+
+export const previewMetadataBatchInputSchema = z
+  .object({
+    credentialRef: credentialRefSchema,
+    videoIds: z.array(youtubeVideoIdSchema).min(1).max(50),
+    editorialPrompt: z.string().min(1),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (new Set(value.videoIds).size !== value.videoIds.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["videoIds"],
+        message: "Video IDs must be unique",
+      });
+    }
+  });
+
+export const previewMetadataBatchOutputSchema = z
+  .object({
+    items: z.array(previewMetadataOutputSchema),
+  })
+  .strict();
+
+const metadataConfirmationItemSchema = z
+  .object({
+    videoId: youtubeVideoIdSchema,
+    proposedTitle: z.string().min(1),
+    proposedDescription: z.string().min(1),
+  })
+  .strict();
+
+export const confirmMetadataBatchInputSchema = z
+  .object({
+    credentialRef: credentialRefSchema,
+    items: z.array(metadataConfirmationItemSchema).min(1).max(50),
+    expectedChannelId: youtubeChannelIdSchema,
+    confirmed: z.literal(true),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (new Set(value.items.map((item) => item.videoId)).size !== value.items.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["items"],
+        message: "Video IDs must be unique",
+      });
+    }
+  });
+
+export const confirmMetadataBatchOutputSchema = z
+  .object({
+    confirmationId: z.string().regex(/^[a-f0-9]{64}$/),
+    items: z.array(metadataConfirmationItemSchema).min(1),
+    expectedChannelId: youtubeChannelIdSchema,
+    confirmed: z.literal(true),
+  })
+  .strict();
+
 export const applyMetadataInputSchema = z
   .object({
     credentialRef: credentialRefSchema,
