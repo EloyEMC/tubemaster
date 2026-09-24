@@ -107,14 +107,29 @@ export const previewMetadataOutputSchema = z
   })
   .strict();
 
-export const applyMetadataInputSchema = z
+const youtubeVideoIdSchema = z.string().regex(/^[A-Za-z0-9_-]{11}$/, "Invalid YouTube video ID");
+const youtubeChannelIdSchema = z.string().regex(/^UC[A-Za-z0-9_-]{22}$/, "Invalid YouTube channel ID");
+
+export const previewMetadataBatchInputSchema = z
   .object({
     credentialRef: credentialRefSchema,
-    videoId: z.string().min(1),
-    finalTitle: z.string().min(1),
-    description: z.string().min(1),
-    expectedChannelId: z.string().min(1).optional(),
-    dryRun: z.boolean().optional().default(false),
+    videoIds: z.array(youtubeVideoIdSchema).min(1).max(50),
+    editorialPrompt: z.string().min(1),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (new Set(value.videoIds).size !== value.videoIds.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["videoIds"],
+        message: "Video IDs must be unique",
+      });
+    }
+  });
+
+export const previewMetadataBatchOutputSchema = z
+  .object({
+    items: z.array(previewMetadataOutputSchema),
   })
   .strict();
 
@@ -125,8 +140,91 @@ const localeMetadataSchema = z
     description: z.string(),
   })
   .strict();
-
 const localeMetadataMapSchema = z.record(z.string(), localeMetadataSchema);
+const metadataConfirmationBaselineSchema = z
+  .object({
+    snippet: snippetRecordSchema,
+    localizations: localeMetadataMapSchema,
+  })
+  .strict();
+
+const metadataConfirmationItemSchema = z
+  .object({
+    videoId: youtubeVideoIdSchema,
+    proposedTitle: z.string().min(1),
+    proposedDescription: z.string().min(1),
+    baseline: metadataConfirmationBaselineSchema,
+  })
+  .strict();
+
+export const confirmMetadataBatchInputSchema = z
+  .object({
+    credentialRef: credentialRefSchema,
+    items: z.array(metadataConfirmationItemSchema).min(1).max(50),
+    expectedChannelId: youtubeChannelIdSchema,
+    confirmed: z.literal(true),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (new Set(value.items.map((item) => item.videoId)).size !== value.items.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["items"],
+        message: "Video IDs must be unique",
+      });
+    }
+  });
+
+export const executeMetadataBatchInputSchema = z
+  .object({
+    credentialRef: credentialRefSchema,
+    items: z.array(metadataConfirmationItemSchema).min(1).max(50),
+    expectedChannelId: youtubeChannelIdSchema,
+    confirmed: z.literal(true),
+    confirmationId: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (new Set(value.items.map((item) => item.videoId)).size !== value.items.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["items"],
+        message: "Video IDs must be unique",
+      });
+    }
+  });
+
+export const executeMetadataBatchOutputSchema = z.object({
+  confirmationId: z.string().regex(/^[a-f0-9]{64}$/),
+  expectedChannelId: youtubeChannelIdSchema,
+  outcomes: z.array(
+    z.object({
+      videoId: youtubeVideoIdSchema,
+      status: z.enum(["success", "provider-failure"]),
+      error: z.object({ code: z.string(), message: z.string() }).optional(),
+    }).strict()
+  ).min(1),
+}).strict();
+
+export const confirmMetadataBatchOutputSchema = z
+  .object({
+    confirmationId: z.string().regex(/^[a-f0-9]{64}$/),
+    items: z.array(metadataConfirmationItemSchema).min(1),
+    expectedChannelId: youtubeChannelIdSchema,
+    confirmed: z.literal(true),
+  })
+  .strict();
+
+export const applyMetadataInputSchema = z
+  .object({
+    credentialRef: credentialRefSchema,
+    videoId: z.string().min(1),
+    finalTitle: z.string().min(1),
+    description: z.string().min(1),
+    expectedChannelId: z.string().min(1).optional(),
+    dryRun: z.boolean().optional().default(false),
+  })
+  .strict();
 
 const metadataLanguageSourceSchema = z.enum(["defaultLanguage", "existing-localization"]);
 
