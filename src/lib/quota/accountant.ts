@@ -20,22 +20,30 @@ export type QuotaEntry = {
   operation: QuotaOperation;
   estimatedUnits: number;
   timestamp: string;
+  channelId?: string;
+};
+
+export type QuotaRecord = {
+  operationId: string;
+  operation: QuotaOperation;
+  channelId?: string;
 };
 
 export type QuotaAccountant = {
-  record(entry: { operationId: string; operation: QuotaOperation }): void;
+  record(entry: QuotaRecord): void;
 };
 
 /** Process-local estimate only; this is not authoritative global quota enforcement. */
 export class InMemoryQuotaAccountant implements QuotaAccountant {
   private readonly recordedEntries: QuotaEntry[] = [];
 
-  record(entry: { operationId: string; operation: QuotaOperation }): void {
+  record(entry: QuotaRecord): void {
     this.recordedEntries.push({
       operationId: entry.operationId,
       operation: entry.operation,
       estimatedUnits: YOUTUBE_QUOTA_COSTS[entry.operation],
       timestamp: new Date().toISOString(),
+      ...(entry.channelId ? { channelId: entry.channelId } : {}),
     });
   }
 
@@ -60,7 +68,7 @@ export function createDurableQuotaAccountant(options: {
   const timezone = resolveQuotaTimezone(options.timezone);
   const now = options.now ?? (() => new Date());
   return {
-    record({ operationId, operation }) {
+    record({ operationId, operation, channelId }) {
       try {
         const timestamp = now();
         const entry = {
@@ -70,7 +78,7 @@ export function createDurableQuotaAccountant(options: {
           timestamp: timestamp.toISOString(),
           bucketStart: getQuotaBucketStart(timestamp, timezone),
           scope: options.scope,
-          channelId: options.channelId,
+          channelId: channelId ?? options.channelId ?? undefined,
         };
         // Both synchronous failures and asynchronous rejections are isolated.
         Promise.resolve(repository.append(entry)).catch(() => {});

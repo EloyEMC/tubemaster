@@ -1,4 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { YOUTUBE_READ_SCOPE, YOUTUBE_WRITE_SCOPE } from "@/lib/auth";
+import type { QuotaAccountant } from "../quota/accountant";
 import {
   DomainError,
   isDomainError,
@@ -36,6 +38,8 @@ type ServiceDependencies = {
       credentials: ResolvedCredentials;
       channelId?: string;
       maxResults?: number;
+      operationId?: string;
+      quotaAccountant?: QuotaAccountant;
     }): Promise<VideoMetadataItem[]>;
     getVideo(args: {
       credentials: ResolvedCredentials;
@@ -81,6 +85,8 @@ type ServiceDependencies = {
   channelSelectionStore: {
     setSelectedChannelId(userId: string, channelId: string): Promise<void>;
   };
+  operationIdFactory?: () => string;
+  quotaAccountant?: QuotaAccountant;
 };
 
 export type { ServiceDependencies };
@@ -210,6 +216,8 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
           credentials,
           channelId: parsedInput.channelId,
           maxResults: parsedInput.maxResults,
+          operationId: deps.operationIdFactory?.() ?? randomUUID(),
+          quotaAccountant: deps.quotaAccountant,
         });
 
         const output = parseWithSchema(

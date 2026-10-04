@@ -43,6 +43,8 @@ type ServiceDependencyOverrides = {
   logger?: Partial<ServiceDependencies["logger"]>;
   writeContext?: Partial<ServiceDependencies["writeContext"]>;
   channelSelectionStore?: Partial<ServiceDependencies["channelSelectionStore"]>;
+  operationIdFactory?: () => string;
+  quotaAccountant?: ServiceDependencies["quotaAccountant"];
 };
 
 function makeDeps(overrides?: ServiceDependencyOverrides): ServiceDependencies {
@@ -105,6 +107,8 @@ function makeDeps(overrides?: ServiceDependencyOverrides): ServiceDependencies {
       setSelectedChannelId: async () => undefined,
       ...overrides?.channelSelectionStore,
     },
+    operationIdFactory: overrides?.operationIdFactory,
+    quotaAccountant: overrides?.quotaAccountant,
   };
 }
 
@@ -118,6 +122,34 @@ test("listVideos returns typed list when credentials are valid", async () => {
 
   assert.equal(result.videos.length, 1);
   assert.equal(result.videos[0]?.videoId, "video-1");
+});
+
+test("listVideos forwards resolved channel scope to quota-aware adapter", async () => {
+  let received: { channelId?: string; operationId?: string; quotaAccountant?: unknown } | undefined;
+  const services = createVideoMetadataServices(
+    makeDeps({
+      operationIdFactory: () => "operation-1",
+      youtubeApi: {
+        listVideos: async (args) => {
+          received = {
+            channelId: args.channelId,
+            operationId: args.operationId,
+            quotaAccountant: args.quotaAccountant,
+          };
+          return [makeVideo()];
+        },
+      },
+    }),
+  );
+
+  await services.listVideos({
+    credentialRef: { userId: "user-1" },
+    channelId: "UC_ACTIVE",
+  });
+
+  assert.equal(received?.channelId, "UC_ACTIVE");
+  assert.equal(received?.operationId, "operation-1");
+  assert.equal(received?.quotaAccountant, undefined);
 });
 
 test("listVideos maps unknown adapter errors to unauthorized", async () => {

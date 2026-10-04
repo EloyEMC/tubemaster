@@ -300,10 +300,17 @@ test("updatePlaylist applies validated patch, preserves non-patched fields and p
       scopeSet: new Set(["https://www.googleapis.com/auth/youtube"]),
     },
     playlistId: "playlist-1",
+    operationId: (capturedUpdateInput as { operationId: string }).operationId,
+    quotaAccountant: undefined,
+    channelId: "UC_ACTIVE",
     title: "Updated title",
     description: "Original description",
     privacyStatus: "private",
   });
+  assert.match(
+    (capturedUpdateInput as { operationId: string }).operationId,
+    /^[0-9a-f-]{36}$/,
+  );
   assert.deepEqual(result, {
     playlist: {
       id: "playlist-1",

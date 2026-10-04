@@ -1,5 +1,6 @@
 import { createGoogleOAuthClient } from "@/lib/auth";
 import { createYoutubeClient } from "@/lib/youtube";
+import type { QuotaAccountant } from "../../quota/accountant";
 import type {
   ResolvedCredentials,
   TranscriptDiagnostic,
@@ -215,6 +216,9 @@ export function createTranscriptProvider(deps: TranscriptProviderDeps = {}) {
     async getTranscript(args: {
       credentials: ResolvedCredentials;
       videoId: string;
+      operationId?: string;
+      quotaAccountant?: QuotaAccountant;
+      channelId?: string;
     }): Promise<TranscriptResult> {
       if (provider !== "youtube-captions") {
         return {
@@ -233,6 +237,15 @@ export function createTranscriptProvider(deps: TranscriptProviderDeps = {}) {
 
       let listRes: Awaited<ReturnType<YoutubeClientLike["captions"]["list"]>>;
       try {
+        try {
+          args.quotaAccountant?.record({
+            operationId: args.operationId ?? `transcript:${args.videoId}`,
+            operation: "captions.list",
+            ...(args.channelId ? { channelId: args.channelId } : {}),
+          });
+        } catch {
+          // Quota accounting is observational.
+        }
         listRes = await youtube.captions.list({
           part: ["snippet"],
           videoId: args.videoId,
@@ -251,6 +264,15 @@ export function createTranscriptProvider(deps: TranscriptProviderDeps = {}) {
 
       let downloadRes: Awaited<ReturnType<YoutubeClientLike["captions"]["download"]>>;
       try {
+        try {
+          args.quotaAccountant?.record({
+            operationId: args.operationId ?? `transcript:${args.videoId}`,
+            operation: "captions.download",
+            ...(args.channelId ? { channelId: args.channelId } : {}),
+          });
+        } catch {
+          // Quota accounting is observational.
+        }
         downloadRes = await youtube.captions.download(
           {
             id: caption.id,
