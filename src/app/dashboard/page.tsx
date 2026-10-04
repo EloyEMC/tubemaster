@@ -2,6 +2,7 @@
 
 import { useSession, signOut, signIn } from "next-auth/react";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { useEffect, useState, useCallback } from "react";
 import { RuleForm } from "@/components/rule-form";
 import { RuleList } from "@/components/rule-list";
@@ -122,6 +123,10 @@ export default function Dashboard() {
           Switch Channel
         </button>
       </div>
+
+      <Link href="/dashboard/quota" className="mb-6 inline-block text-sm text-zinc-400 underline hover:text-zinc-200">
+        View quota usage
+      </Link>
 
       <div className="mb-6 flex gap-1 rounded-lg bg-zinc-900 p-1">
         <button
