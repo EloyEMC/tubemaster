@@ -44,6 +44,41 @@ export class InMemoryQuotaAccountant implements QuotaAccountant {
   }
 }
 
+import type { QuotaScope } from "./repository";
+import { SQLiteQuotaRepository } from "./repository";
+import type { Client } from "@libsql/client";
+
+/** Synchronous accounting contract: persistence failures never interrupt callers. */
+export function createDurableQuotaAccountant(options: {
+  client: Pick<Client, "execute">;
+  scope: QuotaScope;
+  timezone?: string;
+  now?: () => Date;
+}): QuotaAccountant {
+  const repository = new SQLiteQuotaRepository(options.client);
+  const timezone = resolveQuotaTimezone(options.timezone);
+  const now = options.now ?? (() => new Date());
+  return {
+    record({ operationId, operation }) {
+      try {
+        const timestamp = now();
+        const entry = {
+          operationId,
+          operation,
+          estimatedUnits: YOUTUBE_QUOTA_COSTS[operation],
+          timestamp: timestamp.toISOString(),
+          bucketStart: getQuotaBucketStart(timestamp, timezone),
+          scope: options.scope,
+        };
+        // Both synchronous failures and asynchronous rejections are isolated.
+        Promise.resolve(repository.append(entry)).catch(() => {});
+      } catch {
+        // Accounting is best effort.
+      }
+    },
+  };
+}
+
 export const DEFAULT_QUOTA_TIMEZONE = "America/Los_Angeles";
 
 export function resolveQuotaTimezone(
