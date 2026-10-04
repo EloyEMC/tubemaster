@@ -66,6 +66,7 @@ async function initializeDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       scope_kind TEXT NOT NULL,
       user_id TEXT,
+      channel_id TEXT,
       operation_id TEXT NOT NULL,
       operation TEXT NOT NULL,
       estimated_units INTEGER NOT NULL,
@@ -73,6 +74,13 @@ async function initializeDatabase() {
       bucket_start TEXT NOT NULL
     );
   `);
+
+  const quotaColumns = await rawClient.execute("PRAGMA table_info(quota_entries)");
+  if (!quotaColumns.rows.some((row) => row.name === "channel_id")) {
+    await rawClient.execute("ALTER TABLE quota_entries ADD COLUMN channel_id TEXT");
+  }
+  await rawClient.execute(`CREATE INDEX IF NOT EXISTS quota_entries_scope_bucket_channel_idx
+    ON quota_entries (scope_kind, user_id, bucket_start, channel_id)`);
 
   // Migration: add selected_channel_id if missing (idempotent)
   try {

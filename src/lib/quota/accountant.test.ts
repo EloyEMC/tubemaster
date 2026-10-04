@@ -69,6 +69,53 @@ test("durable entries aggregate by bucket and isolate user/global scopes", async
   }
 });
 
+test("channel totals isolate identities while omitted filter includes legacy rows", async () => {
+  const client = createClient({ url: ":memory:" });
+  try {
+    const repository = new SQLiteQuotaRepository(client);
+    await repository.initialize();
+    const scope = { kind: "user" as const, userId: "a" };
+    const now = () => new Date("2026-01-02T07:30:00.000Z");
+    for (const channelId of ["one", "two", undefined]) {
+      createDurableQuotaAccountant({ client, scope, channelId, now }).record({
+        operationId: "same", operation: "videos.list",
+      });
+    }
+    assert.equal(await repository.total(scope, "2026-01-01"), 3);
+    assert.equal(await repository.total(scope, "2026-01-01", "one"), 1);
+    assert.equal(await repository.total(scope, "2026-01-01", "two"), 1);
+    assert.equal(await repository.total(scope, "2026-01-01", null), 1);
+    assert.equal(await repository.total(scope, "2026-01-01", "missing"), 0);
+    assert.equal(await repository.total({ kind: "global" }, "2026-01-01"), 0);
+  } finally {
+    client.close();
+  }
+});
+
+test("repository initializes old quota tables without losing legacy entries", async () => {
+  const client = createClient({ url: ":memory:" });
+  try {
+    await client.execute(`CREATE TABLE quota_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, scope_kind TEXT NOT NULL, user_id TEXT,
+      operation_id TEXT NOT NULL, operation TEXT NOT NULL, estimated_units INTEGER NOT NULL,
+      timestamp TEXT NOT NULL, bucket_start TEXT NOT NULL)`);
+    await client.execute(`INSERT INTO quota_entries
+      (scope_kind, user_id, operation_id, operation, estimated_units, timestamp, bucket_start)
+      VALUES ('user', 'a', 'old', 'videos.list', 7, '2026-01-02T00:00:00Z', '2026-01-01')`);
+    const repository = new SQLiteQuotaRepository(client);
+    await repository.initialize();
+    await repository.initialize();
+    assert.equal(await repository.total({ kind: "user", userId: "a" }, "2026-01-01"), 7);
+    assert.equal(await repository.total({ kind: "user", userId: "a" }, "2026-01-01", null), 7);
+    assert.equal(await repository.total({ kind: "user", userId: "a" }, "2026-01-01", "one"), 0);
+    assert.equal((await client.execute("SELECT channel_id FROM quota_entries")).rows[0].channel_id, null);
+    const indexes = await client.execute("PRAGMA index_list(quota_entries)");
+    assert.ok(indexes.rows.some((row) => row.name === "quota_entries_scope_bucket_channel_idx"));
+  } finally {
+    client.close();
+  }
+});
+
 test("durable record isolates synchronous and rejected persistence failures", async () => {
   const entry = { operationId: "op", operation: "videos.list" as const };
   const sync = createDurableQuotaAccountant({

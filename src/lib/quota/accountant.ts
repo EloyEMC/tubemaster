@@ -52,6 +52,7 @@ import type { Client } from "@libsql/client";
 export function createDurableQuotaAccountant(options: {
   client: Pick<Client, "execute">;
   scope: QuotaScope;
+  channelId?: string | null;
   timezone?: string;
   now?: () => Date;
 }): QuotaAccountant {
@@ -69,6 +70,7 @@ export function createDurableQuotaAccountant(options: {
           timestamp: timestamp.toISOString(),
           bucketStart: getQuotaBucketStart(timestamp, timezone),
           scope: options.scope,
+          channelId: options.channelId,
         };
         // Both synchronous failures and asynchronous rejections are isolated.
         Promise.resolve(repository.append(entry)).catch(() => {});
