@@ -35,6 +35,10 @@ Full walkthrough: **[docs/getting-started.md](docs/getting-started.md)**
 
 Detailed usage by interface: **[docs/interfaces.md](docs/interfaces.md)**
 
+## Operation audit events
+
+Metadata, transcript, and playlist services emit privacy-filtered lifecycle events to the configured logger. Events are observational: logger failures do not change API results. The default metadata logger writes JSON lines to stderr; playlist events require an injected logger. No audit database or built-in retention policy is provided in this slice; stderr retention depends on your process/log collector. See [event vocabulary and fields](docs/interfaces.md#operation-audit-events).
+
 ## Quick command examples
 
 ```bash
