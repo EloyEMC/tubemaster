@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { z } from "zod";
 import {
   buildGoogleLoopbackAuthUrl,
@@ -121,20 +121,36 @@ type CliAuthServiceDependencies = {
   }) => Promise<{ redirectUri: string; waitForCallback: Promise<LoopbackCallbackResult> }>;
 };
 
-function defaultOpenBrowser(url: string) {
-  const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+export function getDefaultBrowserCommand(platform: NodeJS.Platform, url: string) {
+  if (platform === "darwin") return { command: "open", args: [url] };
+  if (platform === "win32") {
+    return { command: "rundll32.exe", args: ["url.dll,FileProtocolHandler", url] };
+  }
+  return { command: "xdg-open", args: [url] };
+}
 
+type BrowserSpawner = (
+  command: string,
+  args: string[],
+  options: { stdio: "ignore"; shell: false; detached: true },
+) => ChildProcess;
+
+export function openBrowser(url: string, spawnBrowser: BrowserSpawner = spawn): Promise<void> {
+  const { command, args } = getDefaultBrowserCommand(process.platform, url);
   return new Promise<void>((resolve, reject) => {
-    const child = spawn(command, [url], {
+    const child = spawnBrowser(command, args, {
       stdio: "ignore",
-      shell: process.platform === "win32",
+      shell: false,
       detached: true,
     });
-
-    child.on("error", reject);
+    child.once("error", reject);
+    child.once("spawn", resolve);
     child.unref();
-    resolve();
   });
+}
+
+function defaultOpenBrowser(url: string) {
+  return openBrowser(url);
 }
 
 function createLoopbackCallbackServer(args: {
