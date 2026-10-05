@@ -1,5 +1,6 @@
 import { createGoogleOAuthClient } from "@/lib/auth";
 import { createYoutubeClient } from "@/lib/youtube";
+import type { QuotaAccountant, QuotaOperation } from "../../quota/accountant";
 import type {
   ResolvedCredentials,
   TranscriptDiagnostic,
@@ -201,6 +202,14 @@ function classifyTranscriptError(args: {
   };
 }
 
+function accountTranscript(args: { videoId: string; operationId?: string; quotaAccountant?: QuotaAccountant; channelId?: string }, operation: QuotaOperation) {
+  try {
+    args.quotaAccountant?.record({ operationId: args.operationId ?? `transcript:${args.videoId}`, operation, ...(args.channelId ? { channelId: args.channelId } : {}) });
+  } catch {
+    // Accounting is observational.
+  }
+}
+
 export function createTranscriptProvider(deps: TranscriptProviderDeps = {}) {
   const provider = deps.provider ?? process.env.YOUTUBE_TRANSCRIPT_PROVIDER ?? "youtube-captions";
   const createOAuthClient =
@@ -215,6 +224,9 @@ export function createTranscriptProvider(deps: TranscriptProviderDeps = {}) {
     async getTranscript(args: {
       credentials: ResolvedCredentials;
       videoId: string;
+      operationId?: string;
+      quotaAccountant?: QuotaAccountant;
+      channelId?: string;
     }): Promise<TranscriptResult> {
       if (provider !== "youtube-captions") {
         return {
@@ -233,6 +245,7 @@ export function createTranscriptProvider(deps: TranscriptProviderDeps = {}) {
 
       let listRes: Awaited<ReturnType<YoutubeClientLike["captions"]["list"]>>;
       try {
+        accountTranscript(args, "captions.list");
         listRes = await youtube.captions.list({
           part: ["snippet"],
           videoId: args.videoId,
@@ -251,6 +264,7 @@ export function createTranscriptProvider(deps: TranscriptProviderDeps = {}) {
 
       let downloadRes: Awaited<ReturnType<YoutubeClientLike["captions"]["download"]>>;
       try {
+        accountTranscript(args, "captions.download");
         downloadRes = await youtube.captions.download(
           {
             id: caption.id,

@@ -1,4 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { YOUTUBE_READ_SCOPE, YOUTUBE_WRITE_SCOPE } from "@/lib/auth";
+import type { QuotaAccountant, QuotaOperation } from "../quota/accountant";
 import {
   DomainError,
   type DeletePlaylistResult,
@@ -36,16 +38,22 @@ type ServiceDependencies = {
     }): Promise<ResolvedCredentials>;
   };
   youtubeApi: {
-    listPlaylists(args: { credentials: ResolvedCredentials }): Promise<Playlist[]>;
+    listPlaylists(args: { credentials: ResolvedCredentials; operationId?: string; quotaAccountant?: QuotaAccountant }): Promise<Playlist[]>;
     createPlaylist(args: {
       credentials: ResolvedCredentials;
       title: string;
       description?: string;
       privacyStatus: PlaylistPrivacyStatus;
+      operationId?: string;
+      quotaAccountant?: QuotaAccountant;
+      channelId?: string;
     }): Promise<Playlist>;
     getPlaylistForUpdate(args: {
       credentials: ResolvedCredentials;
       playlistId: string;
+      operationId?: string;
+      quotaAccountant?: QuotaAccountant;
+      channelId?: string;
     }): Promise<(Playlist & { channelId: string }) | null>;
     updatePlaylist(args: {
       credentials: ResolvedCredentials;
@@ -53,6 +61,9 @@ type ServiceDependencies = {
       title: string;
       description: string;
       privacyStatus: PlaylistPrivacyStatus;
+      operationId?: string;
+      quotaAccountant?: QuotaAccountant;
+      channelId?: string;
     }): Promise<Playlist>;
     getPlaylistForDelete(args: {
       credentials: ResolvedCredentials;
@@ -70,6 +81,9 @@ type ServiceDependencies = {
     listPlaylistItemIdsByVideo(args: {
       credentials: ResolvedCredentials;
       playlistId: string;
+      operationId?: string;
+      quotaAccountant?: QuotaAccountant;
+      channelId?: string;
     }): Promise<Map<string, string[]>>;
     deletePlaylistItem(args: {
       credentials: ResolvedCredentials;
@@ -91,7 +105,17 @@ type ServiceDependencies = {
   channelSelectionStore: {
     setSelectedChannelId(userId: string, channelId: string): Promise<void>;
   };
+  operationIdFactory?: () => string;
+  quotaAccountant?: QuotaAccountant;
 };
+
+function safeAccount(accountant: QuotaAccountant | undefined, operationId: string, operation: QuotaOperation, channelId?: string) {
+  try {
+    accountant?.record({ operationId, operation, ...(channelId ? { channelId } : {}) });
+  } catch {
+    // Accounting is observational.
+  }
+}
 
 function mapUnknownError(error: unknown, fallbackCode: DomainError["code"]) {
   if (isDomainError(error)) return error;
@@ -167,7 +191,7 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
           requiredScopes: [YOUTUBE_READ_SCOPE],
         });
 
-        const playlists = await deps.youtubeApi.listPlaylists({ credentials });
+        const playlists = await deps.youtubeApi.listPlaylists({ credentials, operationId: deps.operationIdFactory?.() ?? randomUUID(), quotaAccountant: deps.quotaAccountant });
         return parseWithSchema(playlistListOutputSchema, { playlists }, "playlist list output");
       } catch (error) {
         throw mapUnknownError(error, "unauthorized");
@@ -193,8 +217,13 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
           expectedChannelId: parsedInput.expectedChannelId,
         });
 
+        const operationId = deps.operationIdFactory?.() ?? randomUUID();
+        safeAccount(deps.quotaAccountant, operationId, "playlists.insert", guardrail.expectedChannelId);
         const playlist = await deps.youtubeApi.createPlaylist({
           credentials,
+          operationId,
+          quotaAccountant: deps.quotaAccountant,
+          channelId: guardrail.expectedChannelId,
           title: parsedInput.title.trim(),
           description: parsedInput.description,
           privacyStatus: parsedInput.privacyStatus,
@@ -235,6 +264,9 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
         const currentPlaylist = await deps.youtubeApi.getPlaylistForUpdate({
           credentials,
           playlistId: parsedInput.playlistId,
+          operationId: deps.operationIdFactory?.() ?? randomUUID(),
+          quotaAccountant: deps.quotaAccountant,
+          channelId: guardrail.activeWriteChannel.id,
         });
 
         if (!currentPlaylist) {
@@ -256,9 +288,14 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
           });
         }
 
+        const operationId = deps.operationIdFactory?.() ?? randomUUID();
+        safeAccount(deps.quotaAccountant, operationId, "playlists.update", guardrail.activeWriteChannel.id);
         const playlist = await deps.youtubeApi.updatePlaylist({
           credentials,
           playlistId: parsedInput.playlistId,
+          operationId,
+          quotaAccountant: deps.quotaAccountant,
+          channelId: guardrail.activeWriteChannel.id,
           title: parsedInput.title ?? currentPlaylist.title,
           description:
             parsedInput.description !== undefined
@@ -417,6 +454,8 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
         const itemIdsByVideo = await deps.youtubeApi.listPlaylistItemIdsByVideo({
           credentials,
           playlistId: parsedInput.playlistId,
+          operationId: deps.operationIdFactory?.() ?? randomUUID(),
+          quotaAccountant: deps.quotaAccountant,
         });
 
         let removed = 0;
