@@ -22,6 +22,9 @@ Use this as the operational reference after setup: TubeMaster covers channel wor
   - Create rule (field + match type + target playlist).
   - List/delete rules.
   - Run matching engine (`/api/run`) over recent videos.
+- **Quota usage** (`/dashboard/quota`)
+  - View estimated usage grouped by bucket date, operation, and channel.
+  - Unassigned usage is shown as `Unassigned`; estimates are observational and not authoritative Google quota usage.
 
 ---
 
@@ -101,6 +104,15 @@ All routes are App Router handlers and require authenticated session user.
   - body: `{ "videoId": "...", "editorialPrompt": "..." }`
 - `POST /api/video-metadata/apply`
   - body: `{ "videoId": "...", "finalTitle": "...", "description": "...", "expectedChannelId": "UC...", "dryRun": true|false }`
+
+### Quota usage API
+
+- `GET /api/quota/usage`
+  - Optional filters: `bucketStart=YYYY-MM-DD`, `operation`, `operationId`, and `channelId`.
+  - Omit `channelId` or use `channelId=all` for all channels; use `channelId=null` or `channelId=unassigned` for unassigned usage.
+  - Explicit channel IDs must be non-empty and contain only letters, numbers, `_`, or `-`.
+  - Results always use the authenticated session user; scope overrides are rejected.
+  - Values are estimated recorded usage, not authoritative remaining YouTube quota.
 
 ### Playlist / video API used by UI
 

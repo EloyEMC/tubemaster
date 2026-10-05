@@ -9,15 +9,20 @@ import {
   type QuotaUsageSummary,
 } from "@/lib/quota/repository";
 
+type WebQuotaUsageFilter = QuotaUsageFilter & {
+  channelId?: string | null;
+};
+
 type Dependencies = {
   getSession: () => Promise<{ user?: { id?: string | null } } | null>;
   summaries: (
     userId: string,
-    filters: QuotaUsageFilter,
+    filters: WebQuotaUsageFilter,
   ) => Promise<QuotaUsageSummary[]>;
 };
 
-const ALLOWED_QUERY_KEYS = new Set(["bucketStart", "operation", "operationId"]);
+const ALLOWED_QUERY_KEYS = new Set(["bucketStart", "operation", "operationId", "channelId"]);
+const CHANNEL_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 const OPERATION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 function isCalendarDate(value: string): boolean {
@@ -31,7 +36,7 @@ function isCalendarDate(value: string): boolean {
   );
 }
 
-function parseFilters(rawUrl: string): QuotaUsageFilter | null {
+function parseFilters(rawUrl: string): WebQuotaUsageFilter | null {
   let params: URLSearchParams;
   try {
     params = new URL(rawUrl).searchParams;
@@ -48,14 +53,25 @@ function parseFilters(rawUrl: string): QuotaUsageFilter | null {
   const bucketStart = params.get("bucketStart");
   const operation = params.get("operation");
   const operationId = params.get("operationId");
+  const channelId = params.get("channelId");
   if (bucketStart !== null && !isCalendarDate(bucketStart)) return null;
   if (operation !== null && !Object.hasOwn(YOUTUBE_QUOTA_COSTS, operation)) return null;
   if (operationId !== null && !OPERATION_ID_PATTERN.test(operationId)) return null;
+  if (
+    channelId !== null &&
+    channelId !== "all" &&
+    channelId !== "null" &&
+    channelId !== "unassigned" &&
+    !CHANNEL_ID_PATTERN.test(channelId)
+  ) return null;
 
   return {
     ...(bucketStart === null ? {} : { bucketStart }),
     ...(operation === null ? {} : { operation: operation as QuotaOperation }),
     ...(operationId === null ? {} : { operationId }),
+    ...(channelId === null || channelId === "all"
+      ? {}
+      : { channelId: channelId === "null" || channelId === "unassigned" ? null : channelId }),
   };
 }
 

@@ -3,7 +3,12 @@
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { formatBucket, isQuotaSummary, type QuotaSummary } from "./format";
+import {
+  formatBucket,
+  formatChannelId,
+  isQuotaSummary,
+  type QuotaSummary,
+} from "./format";
 
 type UsageState =
   | { kind: "loading" }
@@ -64,13 +69,15 @@ export default function QuotaPage() {
               <thead className="bg-zinc-900 text-zinc-400"><tr>
                 <th scope="col" className="p-3">Bucket date</th>
                 <th scope="col" className="p-3">Operation</th>
+                <th scope="col" className="p-3">Channel</th>
                 <th scope="col" className="p-3 text-right">Count</th>
                 <th scope="col" className="p-3 text-right">Estimated units</th>
               </tr></thead>
               <tbody>{usage.summaries.map((row, index) => (
-                <tr key={`${row.bucketStart}-${row.operation}-${index}`} className="border-t border-zinc-800">
+                <tr key={`${row.bucketStart}-${row.operation}-${row.channelId ?? "unassigned"}-${index}`} className="border-t border-zinc-800">
                   <td className="p-3">{formatBucket(row.bucketStart)}</td>
                   <td className="p-3">{row.operation}</td>
+                  <td className="p-3 font-mono text-xs text-zinc-400">{formatChannelId(row.channelId)}</td>
                   <td className="p-3 text-right">{row.operationCount.toLocaleString()}</td>
                   <td className="p-3 text-right">{row.estimatedUnits.toLocaleString()}</td>
                 </tr>
