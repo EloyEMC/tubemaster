@@ -1,4 +1,5 @@
 import { createGoogleOAuthClient } from "@/lib/auth";
+import { mapProviderError } from "@/lib/provider-errors";
 import {
   applyVideoMetadataUpdate,
   createYoutubeClient,
@@ -31,54 +32,67 @@ export function createYoutubeApiAdapter() {
       channelId?: string;
       maxResults?: number;
     }) {
-      const youtube = createAuthorizedClient(args.credentials);
-      const channelId = args.channelId ?? (await getMyChannelId(youtube));
+      try {
+        const youtube = createAuthorizedClient(args.credentials);
+        const channelId = args.channelId ?? (await getMyChannelId(youtube));
 
-      if (!channelId) {
-        throw new DomainError({
-          code: "unauthorized",
-          message: "Cannot resolve channel for the current credentials",
+        if (!channelId) {
+          throw new DomainError({
+            code: "unauthorized",
+            message: "Cannot resolve channel for the current credentials",
+          });
+        }
+
+        return await listVideosByChannel({ youtube, channelId, maxResults: args.maxResults });
+      } catch (error) {
+        throw mapProviderError(error, "update_failed", {
+          ...(args.channelId ? { channelId: args.channelId } : {}),
         });
       }
-
-      return listVideosByChannel({ youtube, channelId, maxResults: args.maxResults });
     },
 
     async getVideo(args: { credentials: ResolvedCredentials; videoId: string }) {
-      const youtube = createAuthorizedClient(args.credentials);
-      const video = await getVideoById(youtube, args.videoId);
+      try {
+        const youtube = createAuthorizedClient(args.credentials);
+        const video = await getVideoById(youtube, args.videoId);
 
-      if (!video) {
-        throw new DomainError({
-          code: "not_found",
-          message: "Video not found",
-          details: { videoId: args.videoId },
-        });
+        if (!video) {
+          throw new DomainError({
+            code: "not_found",
+            message: "Video not found",
+            details: { videoId: args.videoId },
+          });
+        }
+
+        return video;
+      } catch (error) {
+        throw mapProviderError(error, "update_failed", { videoId: args.videoId });
       }
-
-      return video;
     },
 
     async getVideoMetadataContext(args: { credentials: ResolvedCredentials; videoId: string }) {
-      const youtube = createAuthorizedClient(args.credentials);
-      const context = await getVideoMetadataContext(youtube, args.videoId);
+      try {
+        const youtube = createAuthorizedClient(args.credentials);
+        const context = await getVideoMetadataContext(youtube, args.videoId);
 
-      if (!context) {
-        throw new DomainError({
-          code: "not_found",
-          message: "Video metadata context not found",
-          details: { videoId: args.videoId },
-        });
+        if (!context) {
+          throw new DomainError({
+            code: "not_found",
+            message: "Video metadata context not found",
+            details: { videoId: args.videoId },
+          });
+        }
+
+        return JSON.parse(JSON.stringify(context)) as VideoMetadataContext;
+      } catch (error) {
+        throw mapProviderError(error, "update_failed", { videoId: args.videoId });
       }
-
-      return JSON.parse(JSON.stringify(context)) as VideoMetadataContext;
     },
 
     async applyMetadataProposal(args: {
       credentials: ResolvedCredentials;
       proposal: MetadataSyncProposal;
     }) {
-      const youtube = createAuthorizedClient(args.credentials);
       const targetLocalization = args.proposal.update.localizations[args.proposal.targetLanguage];
 
       if (!targetLocalization) {
@@ -92,18 +106,14 @@ export function createYoutubeApiAdapter() {
       }
 
       try {
+        const youtube = createAuthorizedClient(args.credentials);
         await applyVideoMetadataUpdate({
           youtube,
           update: args.proposal.update,
         });
       } catch (error) {
-        throw new DomainError({
-          code: "update_failed",
-          message: "Failed to update YouTube metadata",
-          details: {
-            videoId: args.proposal.update.videoId,
-            cause: error instanceof Error ? error.message : String(error),
-          },
+        throw mapProviderError(error, "update_failed", {
+          videoId: args.proposal.update.videoId,
         });
       }
     },
