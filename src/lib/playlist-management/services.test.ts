@@ -291,19 +291,39 @@ test("updatePlaylist applies validated patch, preserves non-patched fields and p
 
   assert.equal(calls.update, 1);
   assert.equal(calls.persist, 1);
-  assert.deepEqual(capturedUpdateInput, {
-    credentials: {
-      credentialRef: { userId: "user-1" },
-      accessToken: "access",
-      refreshToken: "refresh",
-      tokenExpiry: undefined,
-      scopeSet: new Set(["https://www.googleapis.com/auth/youtube"]),
-    },
-    playlistId: "playlist-1",
-    title: "Updated title",
-    description: "Original description",
-    privacyStatus: "private",
+  const updateInput = capturedUpdateInput as {
+    credentials: unknown;
+    playlistId: string;
+    operationId: string;
+    quotaAccountant: unknown;
+    channelId: string;
+    title: string;
+    description: string;
+    privacyStatus: string;
+  };
+  assert.deepEqual(updateInput.credentials, {
+    credentialRef: { userId: "user-1" },
+    accessToken: "access",
+    refreshToken: "refresh",
+    tokenExpiry: undefined,
+    scopeSet: new Set(["https://www.googleapis.com/auth/youtube"]),
   });
+  assert.equal(updateInput.playlistId, "playlist-1");
+  assert.match(updateInput.operationId, /^[0-9a-f-]{36}$/);
+  assert.equal(updateInput.quotaAccountant, undefined);
+  assert.equal(updateInput.channelId, "UC_ACTIVE");
+  assert.deepEqual(
+    {
+      title: updateInput.title,
+      description: updateInput.description,
+      privacyStatus: updateInput.privacyStatus,
+    },
+    {
+      title: "Updated title",
+      description: "Original description",
+      privacyStatus: "private",
+    },
+  );
   assert.deepEqual(result, {
     playlist: {
       id: "playlist-1",

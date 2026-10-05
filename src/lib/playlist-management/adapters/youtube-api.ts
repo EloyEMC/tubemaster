@@ -9,6 +9,7 @@ import {
   listPlaylistsForAuthenticated,
   updatePlaylistForAuthenticated,
 } from "@/lib/youtube";
+import type { QuotaAccountant } from "@/lib/quota/accountant";
 import type {
   Playlist,
   PlaylistPrivacyStatus,
@@ -27,9 +28,9 @@ function createAuthorizedClient(credentials: ResolvedCredentials) {
 
 export function createPlaylistYoutubeApiAdapter() {
   return {
-    async listPlaylists(args: { credentials: ResolvedCredentials }): Promise<Playlist[]> {
+    async listPlaylists(args: { credentials: ResolvedCredentials; operationId?: string; quotaAccountant?: QuotaAccountant }): Promise<Playlist[]> {
       const youtube = createAuthorizedClient(args.credentials);
-      return listPlaylistsForAuthenticated(youtube);
+      return listPlaylistsForAuthenticated(youtube, args);
     },
 
     async createPlaylist(args: {
@@ -47,9 +48,9 @@ export function createPlaylistYoutubeApiAdapter() {
       );
     },
 
-    async getPlaylistForUpdate(args: { credentials: ResolvedCredentials; playlistId: string }) {
+    async getPlaylistForUpdate(args: { credentials: ResolvedCredentials; playlistId: string; operationId?: string; quotaAccountant?: QuotaAccountant; channelId?: string }) {
       const youtube = createAuthorizedClient(args.credentials);
-      return getPlaylistForUpdateFromYoutube(youtube, args.playlistId);
+      return getPlaylistForUpdateFromYoutube(youtube, args.playlistId, args);
     },
 
     async updatePlaylist(args: {
@@ -106,9 +107,12 @@ export function createPlaylistYoutubeApiAdapter() {
     async listPlaylistItemIdsByVideo(args: {
       credentials: ResolvedCredentials;
       playlistId: string;
+      operationId?: string;
+      quotaAccountant?: QuotaAccountant;
+      channelId?: string;
     }) {
       const youtube = createAuthorizedClient(args.credentials);
-      return listPlaylistItemIdsByVideo(youtube, args.playlistId);
+      return listPlaylistItemIdsByVideo(youtube, args.playlistId, args);
     },
 
     async deletePlaylistItem(args: { credentials: ResolvedCredentials; playlistItemId: string }) {

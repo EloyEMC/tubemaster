@@ -17,30 +17,43 @@ test("in-memory quota accountant records safe entries and accumulates repeated c
   accountant.record({ operationId: "operation-1", operation: "videos.list" });
   accountant.record({ operationId: "operation-1", operation: "videos.update" });
   accountant.record({ operationId: "operation-2", operation: "videos.list" });
+  accountant.record({
+    operationId: "operation-3",
+    operation: "videos.list",
+    channelId: "UC_ACTIVE",
+  });
 
   const entries = accountant.entries();
-  assert.equal(entries.length, 3);
+  assert.equal(entries.length, 4);
   assert.deepEqual(
-    entries.map(({ operationId, operation, estimatedUnits }) => ({
+    entries.map(({ operationId, operation, estimatedUnits, channelId }) => ({
       operationId,
       operation,
       estimatedUnits,
+      ...(channelId ? { channelId } : {}),
     })),
     [
       { operationId: "operation-1", operation: "videos.list", estimatedUnits: 1 },
       { operationId: "operation-1", operation: "videos.update", estimatedUnits: 50 },
       { operationId: "operation-2", operation: "videos.list", estimatedUnits: 1 },
+      {
+        operationId: "operation-3",
+        operation: "videos.list",
+        estimatedUnits: 1,
+        channelId: "UC_ACTIVE",
+      },
     ],
   );
   for (const entry of entries) {
     assert.match(entry.timestamp, /^\d{4}-\d{2}-\d{2}T/);
-    assert.deepEqual(Object.keys(entry).sort(), [
-      "estimatedUnits",
-      "operation",
-      "operationId",
-      "timestamp",
-    ]);
+    assert.deepEqual(
+      Object.keys(entry).sort(),
+      entry.channelId
+        ? ["channelId", "estimatedUnits", "operation", "operationId", "timestamp"]
+        : ["estimatedUnits", "operation", "operationId", "timestamp"],
+    );
   }
+  assert.equal(entries[3]?.channelId, "UC_ACTIVE");
   (entries[0] as { operationId: string }).operationId = "changed";
   assert.equal(accountant.entries()[0].operationId, "operation-1");
 });
