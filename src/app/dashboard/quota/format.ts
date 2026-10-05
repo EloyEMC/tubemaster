@@ -1,6 +1,7 @@
 export type QuotaSummary = {
   bucketStart: string;
   operation: string;
+  channelId?: string | null;
   operationCount: number;
   estimatedUnits: number;
 };
@@ -18,11 +19,16 @@ export function formatBucket(value: string): string {
   return value;
 }
 
+export function formatChannelId(value: string | null | undefined): string {
+  return value ?? "Unassigned";
+}
+
 export function isQuotaSummary(value: unknown): value is QuotaSummary {
   if (typeof value !== "object" || value === null) return false;
   const row = value as Record<string, unknown>;
   return typeof row.bucketStart === "string" &&
     typeof row.operation === "string" &&
+    (row.channelId === undefined || row.channelId === null || typeof row.channelId === "string") &&
     typeof row.operationCount === "number" && Number.isFinite(row.operationCount) && row.operationCount >= 0 &&
     typeof row.estimatedUnits === "number" && Number.isFinite(row.estimatedUnits) && row.estimatedUnits >= 0;
 }

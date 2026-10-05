@@ -22,12 +22,34 @@ test("usage route authenticates before querying and forces session scope", async
   assert.deepEqual(await response.json(), { summaries: [{ bucketStart: "2026-04-01", operation: "videos.list", estimatedUnits: 2, operationCount: 2 }] });
 });
 
+test("usage forwards all, unassigned, and explicit channel filters", async () => {
+  const received: object[] = [];
+  const handler = createQuotaUsageGetHandler({
+    getSession: async () => ({ user: { id: "user" } }),
+    summaries: async (_userId, filters) => {
+      received.push(filters);
+      return [];
+    },
+  });
+
+  for (const [query, expected] of [
+    ["", {}],
+    ["channelId=all", {}],
+    ["channelId=null", { channelId: null }],
+    ["channelId=unassigned", { channelId: null }],
+    ["channelId=channel_a-1", { channelId: "channel_a-1" }],
+  ] as const) {
+    assert.equal((await handler(new Request(`http://localhost/api/quota/usage?${query}`))).status, 200);
+    assert.deepEqual(received.at(-1), expected);
+  }
+});
+
 test("usage rejects unknown, duplicated, and malformed filters without repository access", async () => {
   const handler = createQuotaUsageGetHandler({
     getSession: async () => ({ user: { id: "user" } }),
     summaries: async () => { throw new Error("unexpected access"); },
   });
-  for (const query of ["scope=global", "userId=other", "operation=unknown", "operation=videos.list&operation=videos.list", "bucketStart=2026-02-30", "bucketStart=2026-2-01", "operationId=", "operationId=bad%20id"]) {
+  for (const query of ["scope=global", "userId=other", "operation=unknown", "operation=videos.list&operation=videos.list", "bucketStart=2026-02-30", "bucketStart=2026-2-01", "operationId=", "operationId=bad%20id", "channelId=", "channelId=bad%20id", "channelId=channel/a"]) {
     const response = await handler(new Request(`http://localhost/api/quota/usage?${query}`));
     assert.equal(response.status, 422, query);
     assert.deepEqual(await response.json(), { error: "Invalid quota usage query", code: "INVALID_INPUT" });
