@@ -62,6 +62,16 @@ async function initializeDatabase() {
       enabled INTEGER NOT NULL DEFAULT 1,
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
+    CREATE TABLE IF NOT EXISTS quota_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      scope_kind TEXT NOT NULL,
+      user_id TEXT,
+      operation_id TEXT NOT NULL,
+      operation TEXT NOT NULL,
+      estimated_units INTEGER NOT NULL,
+      timestamp TEXT NOT NULL,
+      bucket_start TEXT NOT NULL
+    );
   `);
 
   // Migration: add selected_channel_id if missing (idempotent)
@@ -107,6 +117,8 @@ const client = new Proxy(rawClient, {
     return value.bind(target);
   },
 });
+
+export const quotaClient = client;
 
 export const db = drizzle(client, { schema: { users, rules } });
 

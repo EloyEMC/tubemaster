@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { createClient } from "@libsql/client";
+import { SQLiteQuotaRepository } from "./repository";
 import test from "node:test";
 import {
   InMemoryQuotaAccountant,
+  createDurableQuotaAccountant,
   YOUTUBE_QUOTA_COSTS,
   getQuotaBucketStart,
   resolveQuotaTimezone,
@@ -40,6 +43,45 @@ test("in-memory quota accountant records safe entries and accumulates repeated c
   }
   (entries[0] as { operationId: string }).operationId = "changed";
   assert.equal(accountant.entries()[0].operationId, "operation-1");
+});
+
+test("durable entries aggregate by bucket and isolate user/global scopes", async () => {
+  const client = createClient({ url: ":memory:" });
+  try {
+    const repository = new SQLiteQuotaRepository(client);
+    await repository.initialize();
+    const now = () => new Date("2026-01-02T07:30:00.000Z");
+    const user = createDurableQuotaAccountant({ client, scope: { kind: "user", userId: "a" }, now });
+    const other = createDurableQuotaAccountant({ client, scope: { kind: "user", userId: "b" }, now });
+    const global = createDurableQuotaAccountant({ client, scope: { kind: "global" }, now });
+    user.record({ operationId: "same", operation: "videos.list" });
+    user.record({ operationId: "same", operation: "videos.update" });
+    other.record({ operationId: "same", operation: "videos.list" });
+    global.record({ operationId: "same", operation: "captions.download" });
+    // Await the client's query after inserts have been scheduled on the same connection.
+    assert.equal(await repository.total({ kind: "user", userId: "a" }, "2026-01-01"), 51);
+    assert.equal(await repository.total({ kind: "user", userId: "b" }, "2026-01-01"), 1);
+    assert.equal(await repository.total({ kind: "global" }, "2026-01-01"), 200);
+    assert.equal(await repository.total({ kind: "user", userId: "a" }, "2026-01-02"), 0);
+    assert.equal((await client.execute("SELECT COUNT(*) AS count FROM quota_entries")).rows[0].count, 4);
+  } finally {
+    client.close();
+  }
+});
+
+test("durable record isolates synchronous and rejected persistence failures", async () => {
+  const entry = { operationId: "op", operation: "videos.list" as const };
+  const sync = createDurableQuotaAccountant({
+    client: { execute: () => { throw new Error("offline"); } } as never,
+    scope: { kind: "global" },
+  });
+  assert.doesNotThrow(() => sync.record(entry));
+  const rejected = createDurableQuotaAccountant({
+    client: { execute: () => Promise.reject(new Error("offline")) } as never,
+    scope: { kind: "global" },
+  });
+  assert.doesNotThrow(() => rejected.record(entry));
+  await new Promise((resolve) => setImmediate(resolve));
 });
 
 test("explicit YouTube costs cover every supported operation", () => {
