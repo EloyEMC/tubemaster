@@ -4,6 +4,12 @@
 
 Use this as the operational reference after setup: TubeMaster covers channel workflows across metadata, transcripts, playlists, rules, and automation surfaces.
 
+## Operation audit events
+
+Service workflows emit `start` before work and one terminal `success`, `dry_run` (metadata apply only), or `failure` event afterward. Vocabulary: `video_metadata.list`, `video_metadata.preview`, `video_metadata.apply`, `transcript.get`, and `playlist.list`, `playlist.create`, `playlist.update`, `playlist.delete`, `playlist.add_videos`, `playlist.remove_videos`, each followed by `.<phase>`. The logger writes `{ level, event, timestamp, context }` JSON lines; `timestamp` is an ISO date. Context is strictly restricted to scalar `operationId`, `channelId`, `videoId`, `playlistId`, `dryRun`, `count`, `code`, and `transcriptStatus`. Channel IDs appear only when resolved/available; operation IDs correlate lifecycle events and quota context where passed. Failure `code` is a mapped domain code, never a raw provider error. No credential, title, description, editorial prompt, transcript text, or nested payload is logged. A batch operation can succeed with per-item failures; its existing response retains those details without embedding them in audit events.
+
+The default metadata logger streams JSON lines to stderr. Playlist events are emitted only if a logger is injected into playlist services. These events are not stored in SQLite and have no app-managed retention or query API; retention is determined by the process supervisor or log collector. Audit delivery is best-effort, not durable, and does not alter responses or block writes.
+
 ## Web UI (`http://localhost:3000`)
 
 ### Login flow

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { emitAuditEvent } from "./adapters/logger";
 import { YOUTUBE_READ_SCOPE, YOUTUBE_WRITE_SCOPE } from "@/lib/auth";
 import type { QuotaAccountant } from "../quota/accountant";
 import {
@@ -205,7 +206,9 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
   return {
     async listVideos(input: unknown) {
       const parsedInput = parseWithSchema(listVideosInputSchema, input, "list videos input");
-
+      const operationId = deps.operationIdFactory?.() ?? randomUUID();
+      const audit = (phase: string, extra: Record<string, unknown> = {}) => emitAuditEvent(deps.logger, `video_metadata.list.${phase}`, { operationId, channelId: parsedInput.channelId, ...extra });
+      audit("start");
       try {
         const credentials = await deps.authResolver.resolve({
           credentialRef: parsedInput.credentialRef,
@@ -216,7 +219,7 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
           credentials,
           channelId: parsedInput.channelId,
           maxResults: parsedInput.maxResults,
-          operationId: deps.operationIdFactory?.() ?? randomUUID(),
+          operationId,
           quotaAccountant: deps.quotaAccountant,
         });
 
@@ -226,22 +229,21 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
           "list videos output"
         );
 
-        deps.logger.info({
-          event: "video_metadata.list.success",
-          context: { count: output.videos.length, channelId: parsedInput.channelId ?? "default" },
-        });
+        audit("success", { count: output.videos.length });
 
         return output;
       } catch (error) {
         const mapped = mapUnknownError(error, "unauthorized");
-        deps.logger.error({ event: "video_metadata.list.error", context: { code: mapped.code } });
+        audit("failure", { code: mapped.code });
         throw mapped;
       }
     },
 
     async getTranscript(input: unknown) {
       const parsedInput = parseWithSchema(transcriptInputSchema, input, "transcript input");
-
+      const operationId = deps.operationIdFactory?.() ?? randomUUID();
+      const audit = (phase: string, extra: Record<string, unknown> = {}) => emitAuditEvent(deps.logger, `transcript.get.${phase}`, { operationId, videoId: parsedInput.videoId, ...extra });
+      audit("start");
       try {
         const credentials = await deps.authResolver.resolve({
           credentialRef: parsedInput.credentialRef,
@@ -259,9 +261,12 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
           "transcript output"
         );
 
+        audit("success", { transcriptStatus: output.transcript.status });
         return output;
       } catch (error) {
-        throw mapUnknownError(error, "transcript_unavailable");
+        const mapped = mapUnknownError(error, "transcript_unavailable");
+        audit("failure", { code: mapped.code });
+        throw mapped;
       }
     },
 
@@ -271,7 +276,9 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
         input,
         "preview metadata input"
       );
-
+      const operationId = deps.operationIdFactory?.() ?? randomUUID();
+      const audit = (phase: string, extra: Record<string, unknown> = {}) => emitAuditEvent(deps.logger, `video_metadata.preview.${phase}`, { operationId, videoId: parsedInput.videoId, ...extra });
+      audit("start");
       try {
         const credentials = await deps.authResolver.resolve({
           credentialRef: parsedInput.credentialRef,
@@ -304,14 +311,13 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
           "preview metadata output"
         );
 
-        deps.logger.info({
-          event: "video_metadata.preview.success",
-          context: { videoId: parsedInput.videoId, transcriptStatus: output.transcript.status },
-        });
+        audit("success", { transcriptStatus: output.transcript.status });
 
         return output;
       } catch (error) {
-        throw mapUnknownError(error, "generation_failed");
+        const mapped = mapUnknownError(error, "generation_failed");
+        audit("failure", { code: mapped.code });
+        throw mapped;
       }
     },
 
@@ -331,7 +337,10 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
         },
         "metadata draft"
       );
-
+      const operationId = deps.operationIdFactory?.() ?? randomUUID();
+      let channelId: string | undefined;
+      const audit = (phase: string, extra: Record<string, unknown> = {}) => emitAuditEvent(deps.logger, `video_metadata.apply.${phase}`, { operationId, channelId, videoId: parsedInput.videoId, dryRun: parsedInput.dryRun ?? false, ...extra });
+      audit("start");
       try {
         const credentials = await deps.authResolver.resolve({
           credentialRef: parsedInput.credentialRef,
@@ -344,6 +353,7 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
           expectedChannelId: parsedInput.expectedChannelId,
         });
 
+        channelId = guardrail.expectedChannelId;
         const metadataContext = await deps.youtubeApi.getVideoMetadataContext({
           credentials,
           videoId: parsedInput.videoId,
@@ -356,7 +366,7 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
         });
 
         if (parsedInput.dryRun) {
-          return parseWithSchema(
+          const output = parseWithSchema(
             applyMetadataOutputSchema,
             {
               dryRun: true,
@@ -368,6 +378,8 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
             },
             "apply metadata output"
           );
+          audit("dry_run");
+          return output;
         }
 
         await deps.youtubeApi.applyMetadataProposal({
@@ -395,18 +407,13 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
           "apply metadata output"
         );
 
-        deps.logger.info({
-          event: "video_metadata.apply.success",
-          context: {
-            videoId: parsedInput.videoId,
-            dryRun: false,
-            targetLanguage: proposal.targetLanguage,
-          },
-        });
+        audit("success");
 
         return output;
       } catch (error) {
-        throw mapUnknownError(error, "update_failed");
+        const mapped = mapUnknownError(error, "update_failed");
+        audit("failure", { code: mapped.code });
+        throw mapped;
       }
     },
   };

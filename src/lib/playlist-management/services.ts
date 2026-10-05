@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { emitAuditEvent, type VideoMetadataLogger } from "../video-metadata/adapters/logger";
 import { YOUTUBE_READ_SCOPE, YOUTUBE_WRITE_SCOPE } from "@/lib/auth";
 import type { QuotaAccountant, QuotaOperation } from "../quota/accountant";
 import {
@@ -107,7 +108,15 @@ type ServiceDependencies = {
   };
   operationIdFactory?: () => string;
   quotaAccountant?: QuotaAccountant;
+  logger?: VideoMetadataLogger;
 };
+
+function auditScope(deps: ServiceDependencies, operation: string, operationId: string, target: Record<string, unknown> = {}) {
+  let channelId: string | undefined;
+  const emit = (phase: string, extra: Record<string, unknown> = {}) => emitAuditEvent(deps.logger, `playlist.${operation}.${phase}`, { operationId, channelId, ...target, ...extra });
+  emit("start");
+  return { emit, setChannelId: (id: string) => { channelId = id; } };
+}
 
 function safeAccount(accountant: QuotaAccountant | undefined, operationId: string, operation: QuotaOperation, channelId?: string) {
   try {
@@ -184,17 +193,22 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
   return {
     async listPlaylists(input: unknown) {
       const parsedInput = parseWithSchema(playlistListInputSchema, input, "playlist list input");
-
+      const operationId = deps.operationIdFactory?.() ?? randomUUID();
+      const audit = auditScope(deps, "list", operationId);
       try {
         const credentials = await deps.authResolver.resolve({
           credentialRef: parsedInput.credentialRef,
           requiredScopes: [YOUTUBE_READ_SCOPE],
         });
 
-        const playlists = await deps.youtubeApi.listPlaylists({ credentials, operationId: deps.operationIdFactory?.() ?? randomUUID(), quotaAccountant: deps.quotaAccountant });
-        return parseWithSchema(playlistListOutputSchema, { playlists }, "playlist list output");
+        const playlists = await deps.youtubeApi.listPlaylists({ credentials, operationId, quotaAccountant: deps.quotaAccountant });
+        const output = parseWithSchema(playlistListOutputSchema, { playlists }, "playlist list output");
+        audit.emit("success", { count: output.playlists.length });
+        return output;
       } catch (error) {
-        throw mapUnknownError(error, "unauthorized");
+        const mapped = mapUnknownError(error, "unauthorized");
+        audit.emit("failure", { code: mapped.code });
+        throw mapped;
       }
     },
 
@@ -204,7 +218,8 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
         input,
         "playlist create input"
       );
-
+      const operationId = deps.operationIdFactory?.() ?? randomUUID();
+      const audit = auditScope(deps, "create", operationId);
       try {
         const credentials = await deps.authResolver.resolve({
           credentialRef: parsedInput.credentialRef,
@@ -217,7 +232,7 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
           expectedChannelId: parsedInput.expectedChannelId,
         });
 
-        const operationId = deps.operationIdFactory?.() ?? randomUUID();
+        audit.setChannelId(guardrail.expectedChannelId);
         safeAccount(deps.quotaAccountant, operationId, "playlists.insert", guardrail.expectedChannelId);
         const playlist = await deps.youtubeApi.createPlaylist({
           credentials,
@@ -236,9 +251,13 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
           );
         }
 
-        return parseWithSchema(playlistCreateOutputSchema, { playlist }, "playlist create output");
+        const output = parseWithSchema(playlistCreateOutputSchema, { playlist }, "playlist create output");
+        audit.emit("success", { playlistId: output.playlist.id });
+        return output;
       } catch (error) {
-        throw mapUnknownError(error, "update_failed");
+        const mapped = mapUnknownError(error, "update_failed");
+        audit.emit("failure", { code: mapped.code });
+        throw mapped;
       }
     },
 
@@ -248,7 +267,8 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
         input,
         "playlist update input"
       );
-
+      const operationId = deps.operationIdFactory?.() ?? randomUUID();
+      const audit = auditScope(deps, "update", operationId, { playlistId: parsedInput.playlistId });
       try {
         const credentials = await deps.authResolver.resolve({
           credentialRef: parsedInput.credentialRef,
@@ -261,10 +281,11 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
           expectedChannelId: parsedInput.expectedChannelId,
         });
 
+        audit.setChannelId(guardrail.activeWriteChannel.id);
         const currentPlaylist = await deps.youtubeApi.getPlaylistForUpdate({
           credentials,
           playlistId: parsedInput.playlistId,
-          operationId: deps.operationIdFactory?.() ?? randomUUID(),
+          operationId,
           quotaAccountant: deps.quotaAccountant,
           channelId: guardrail.activeWriteChannel.id,
         });
@@ -288,7 +309,6 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
           });
         }
 
-        const operationId = deps.operationIdFactory?.() ?? randomUUID();
         safeAccount(deps.quotaAccountant, operationId, "playlists.update", guardrail.activeWriteChannel.id);
         const playlist = await deps.youtubeApi.updatePlaylist({
           credentials,
@@ -311,13 +331,17 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
           );
         }
 
-        return parseWithSchema(
+        const output = parseWithSchema(
           playlistUpdateOutputSchema,
           { playlist },
           "playlist update output"
         );
+        audit.emit("success");
+        return output;
       } catch (error) {
-        throw mapUnknownError(error, "update_failed");
+        const mapped = mapUnknownError(error, "update_failed");
+        audit.emit("failure", { code: mapped.code });
+        throw mapped;
       }
     },
 
@@ -327,7 +351,7 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
         input,
         "playlist delete input"
       );
-
+      const audit = auditScope(deps, "delete", deps.operationIdFactory?.() ?? randomUUID(), { playlistId: parsedInput.playlistId });
       try {
         const credentials = await deps.authResolver.resolve({
           credentialRef: parsedInput.credentialRef,
@@ -340,6 +364,7 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
           expectedChannelId: parsedInput.expectedChannelId,
         });
 
+        audit.setChannelId(guardrail.activeWriteChannel.id);
         const playlist = await deps.youtubeApi.getPlaylistForDelete({
           credentials,
           playlistId: parsedInput.playlistId,
@@ -376,7 +401,7 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
           );
         }
 
-        return parseWithSchema(
+        const output = parseWithSchema(
           playlistDeleteOutputSchema,
           {
             deleted: true,
@@ -384,8 +409,12 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
           },
           "playlist delete output"
         );
+        audit.emit("success");
+        return output;
       } catch (error) {
-        throw mapUnknownError(error, "update_failed");
+        const mapped = mapUnknownError(error, "update_failed");
+        audit.emit("failure", { code: mapped.code });
+        throw mapped;
       }
     },
 
@@ -395,7 +424,7 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
         input,
         "playlist add videos input"
       );
-
+      const audit = auditScope(deps, "add_videos", deps.operationIdFactory?.() ?? randomUUID(), { playlistId: parsedInput.playlistId });
       try {
         const credentials = await deps.authResolver.resolve({
           credentialRef: parsedInput.credentialRef,
@@ -423,7 +452,7 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
           }
         }
 
-        return parseWithSchema(
+        const output = parseWithSchema(
           playlistAddVideosOutputSchema,
           {
             playlistId: parsedInput.playlistId,
@@ -433,8 +462,12 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
           },
           "playlist add videos output"
         );
+        audit.emit("success", { count: output.added });
+        return output;
       } catch (error) {
-        throw mapUnknownError(error, "update_failed");
+        const mapped = mapUnknownError(error, "update_failed");
+        audit.emit("failure", { code: mapped.code });
+        throw mapped;
       }
     },
 
@@ -444,7 +477,8 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
         input,
         "playlist remove videos input"
       );
-
+      const operationId = deps.operationIdFactory?.() ?? randomUUID();
+      const audit = auditScope(deps, "remove_videos", operationId, { playlistId: parsedInput.playlistId });
       try {
         const credentials = await deps.authResolver.resolve({
           credentialRef: parsedInput.credentialRef,
@@ -454,7 +488,7 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
         const itemIdsByVideo = await deps.youtubeApi.listPlaylistItemIdsByVideo({
           credentials,
           playlistId: parsedInput.playlistId,
-          operationId: deps.operationIdFactory?.() ?? randomUUID(),
+          operationId,
           quotaAccountant: deps.quotaAccountant,
         });
 
@@ -490,7 +524,7 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
           }
         }
 
-        return parseWithSchema(
+        const output = parseWithSchema(
           playlistRemoveVideosOutputSchema,
           {
             playlistId: parsedInput.playlistId,
@@ -500,8 +534,12 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
           },
           "playlist remove videos output"
         );
+        audit.emit("success", { count: output.removed });
+        return output;
       } catch (error) {
-        throw mapUnknownError(error, "update_failed");
+        const mapped = mapUnknownError(error, "update_failed");
+        audit.emit("failure", { code: mapped.code });
+        throw mapped;
       }
     },
   };

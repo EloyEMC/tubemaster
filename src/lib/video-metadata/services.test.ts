@@ -112,6 +112,39 @@ function makeDeps(overrides?: ServiceDependencyOverrides): ServiceDependencies {
   };
 }
 
+test("audit orders start then dry_run or failure without exposing editorial content", async () => {
+  const events: Array<{ event: string; context?: Record<string, unknown> }> = [];
+  const deps = makeDeps({ operationIdFactory: () => "op-1", logger: { info: (event) => events.push(event), error: (event) => events.push(event) } });
+  const services = createVideoMetadataServices(deps);
+  await services.applyMetadata({ credentialRef: { userId: "secret" }, videoId: "video-1", finalTitle: "SECRET TITLE", description: "SECRET DESCRIPTION", expectedChannelId: "UC_ACTIVE", dryRun: true });
+  assert.deepEqual(events.map((item) => item.event), ["video_metadata.apply.start", "video_metadata.apply.dry_run"]);
+  assert.equal(events[1]?.context?.channelId, "UC_ACTIVE");
+  assert.equal(events[0]?.context?.operationId, "op-1");
+  assert.equal(events[0]?.context?.dryRun, true);
+  assert.equal(JSON.stringify(events).includes("SECRET"), false);
+  events.length = 0;
+  deps.writeContext.assertWriteChannel = async () => { throw new DomainError({ code: "WRITE_CHANNEL_MISMATCH", message: "secret" }); };
+  await assert.rejects(
+    () => services.applyMetadata({ credentialRef: { userId: "user-1" }, videoId: "video-1", finalTitle: "Title", description: "Description", expectedChannelId: "UC_OTHER" }),
+    { code: "WRITE_CHANNEL_MISMATCH" },
+  );
+  assert.deepEqual(events.map((item) => item.event), ["video_metadata.apply.start", "video_metadata.apply.failure"]);
+  assert.equal(events[1]?.context?.code, "WRITE_CHANNEL_MISMATCH");
+});
+
+test("transcript provider failures emit safe code and logger exceptions are isolated", async () => {
+  const events: string[] = [];
+  const services = createVideoMetadataServices(makeDeps({
+    logger: { info: ({ event }) => { events.push(event); throw Error("logger"); }, error: ({ event }) => { events.push(event); throw Error("logger"); } },
+    transcriptProvider: { getTranscript: async () => { throw Error("private transcript provider details"); } },
+  }));
+  await assert.rejects(
+    () => services.getTranscript({ credentialRef: { userId: "user-1" }, videoId: "video-1" }),
+    { code: "transcript_unavailable" },
+  );
+  assert.deepEqual(events, ["transcript.get.start", "transcript.get.failure"]);
+});
+
 test("listVideos returns typed list when credentials are valid", async () => {
   const services = createVideoMetadataServices(makeDeps());
 
