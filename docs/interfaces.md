@@ -66,6 +66,10 @@ npm run cli:video-metadata -- playlist add --playlistId <PLAYLIST_ID> --videoIds
 npm run cli:video-metadata -- playlist remove --playlistId <PLAYLIST_ID> --videoIds <VIDEO1,VIDEO2,...> [--userId <USER_ID>]
 ```
 
+### Standalone quota reporting (not wired into the video-metadata CLI)
+
+Run `node --import tsx src/cli/quota.ts usage [--bucketStart YYYY-MM-DD] [--operation <OPERATION>] [--operationId <ID>] [--channelId all|null|<CHANNEL_ID>]` after selecting an active authenticated user. The command prints one JSON envelope (`{ "ok": true, "data": { "summaries": [...], "estimateNotice": "..." } }` or `{ "ok": false, "error": { "code": "...", "message": "..." } }`) and exits nonzero on error. Omit `channelId` or pass `all` to include all channels, pass `null` for unassigned usage, or pass a non-empty ID containing only letters, digits, `_`, and `-`. Results are read-only, user-scoped recorded estimates, not an authoritative Google quota balance.
+
 ---
 
 ## MCP server (`npm run mcp:video-metadata`)
@@ -89,6 +93,8 @@ Key MCP tools:
   - `playlist_add_videos`, `playlist_remove_videos`
 
 Most tools accept optional `credentialRef`; if omitted, server falls back to active local auth context.
+
+The standalone `quotaUsage` handler in `src/mcp/quota.ts` is **not registered** as an MCP server tool. Direct integrations may pass `bucketStart`, `operation`, `operationId`, and `channelId`. Omitted or `"all"` channel means all channels; `null` or `"null"` means unassigned; explicit IDs must match `[A-Za-z0-9_-]+`. Caller scope overrides are rejected. The handler requires the active authenticated user and returns identical JSON text and structured content with stable success/error envelopes and an explicit non-authoritative estimate notice.
 
 ---
 
