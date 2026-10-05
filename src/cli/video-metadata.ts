@@ -109,6 +109,16 @@ export function parseArgs(argv: string[]): ParsedArgs {
   };
 }
 
+function requirePlaylistMutationConfirmation(flags: Record<string, string | boolean>): void {
+  if (flags.confirmed === true) return;
+  throw new DomainError({
+    code: "validation_failed",
+    message: "confirmed" in flags
+      ? "--confirmed must be provided without a value"
+      : "Missing required --confirmed",
+  });
+}
+
 function parseVideoIdsFlag(flags: Record<string, string | boolean>) {
   const rawVideoIds = requiredStringFlag(flags, "videoIds");
   const ids = rawVideoIds
@@ -292,11 +302,14 @@ export async function runCliCommand(args: {
         return 0;
       }
 
+      requirePlaylistMutationConfirmation(parsedArgs.flags);
+      const expectedChannelId = requiredStringFlag(parsedArgs.flags, "expectedChannelId");
+
       if (parsedArgs.command === "create") {
         const result = await core.createPlaylist({
           credentialRef,
           title: requiredStringFlag(parsedArgs.flags, "title"),
-          expectedChannelId: requiredStringFlag(parsedArgs.flags, "expectedChannelId"),
+          expectedChannelId,
           description:
             typeof parsedArgs.flags.description === "string"
               ? parsedArgs.flags.description
@@ -331,7 +344,7 @@ export async function runCliCommand(args: {
         const result = await core.updatePlaylist({
           credentialRef,
           playlistId: requiredStringFlag(parsedArgs.flags, "playlistId"),
-          expectedChannelId: requiredStringFlag(parsedArgs.flags, "expectedChannelId"),
+          expectedChannelId,
           title,
           description,
           privacyStatus,
@@ -344,7 +357,7 @@ export async function runCliCommand(args: {
         const result = await core.deletePlaylist({
           credentialRef,
           playlistId: requiredStringFlag(parsedArgs.flags, "playlistId"),
-          expectedChannelId: requiredStringFlag(parsedArgs.flags, "expectedChannelId"),
+          expectedChannelId,
         });
         writeStdout(serializeSuccess(result));
         return 0;
@@ -354,6 +367,7 @@ export async function runCliCommand(args: {
         const result = await core.addVideosToPlaylist({
           credentialRef,
           playlistId: requiredStringFlag(parsedArgs.flags, "playlistId"),
+          expectedChannelId,
           videoIds: parseVideoIdsFlag(parsedArgs.flags),
         });
         writeStdout(serializeSuccess(result));
@@ -363,6 +377,7 @@ export async function runCliCommand(args: {
       const result = await core.removeVideosFromPlaylist({
         credentialRef,
         playlistId: requiredStringFlag(parsedArgs.flags, "playlistId"),
+        expectedChannelId,
         videoIds: parseVideoIdsFlag(parsedArgs.flags),
       });
       writeStdout(serializeSuccess(result));
