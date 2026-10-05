@@ -3,7 +3,7 @@ import test from "node:test";
 import { DomainError } from "./contracts";
 import { createPlaylistManagementServices } from "./services";
 
-function createServicesFixture() {
+function createServicesFixture(logger?: { info: (payload: { event: string; context?: Record<string, unknown> }) => void; error: (payload: { event: string; context?: Record<string, unknown> }) => void }) {
   const authCalls: Array<{ credentialRef: unknown; requiredScopes: readonly string[] }> = [];
 
   const services = createPlaylistManagementServices({
@@ -67,10 +67,24 @@ function createServicesFixture() {
     channelSelectionStore: {
       setSelectedChannelId: async () => undefined,
     },
+    logger,
+    operationIdFactory: () => "op-1",
   });
 
   return { services, authCalls };
 }
+
+test("playlist audit orders start and success, with isolated logger failures", async () => {
+  const events: Array<{ event: string; context?: Record<string, unknown> }> = [];
+  const log = (payload: { event: string; context?: Record<string, unknown> }) => { events.push(payload); throw Error("logger unavailable"); };
+  const { services } = createServicesFixture({ info: log, error: log });
+  const result = await services.createPlaylist({ credentialRef: { userId: "secret" }, title: "PRIVATE TITLE", expectedChannelId: "UC_ACTIVE" });
+  assert.equal(result.playlist.id, "p-created");
+  assert.deepEqual(events.map((item) => item.event), ["playlist.create.start", "playlist.create.success"]);
+  assert.equal(events[0]?.context?.operationId, "op-1");
+  assert.equal(events[1]?.context?.channelId, "UC_ACTIVE");
+  assert.equal(JSON.stringify(events).includes("PRIVATE TITLE"), false);
+});
 
 test("listPlaylists resolves auth and returns stable output", async () => {
   const { services, authCalls } = createServicesFixture();
