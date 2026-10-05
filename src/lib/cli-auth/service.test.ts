@@ -1,7 +1,47 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import test from "node:test";
 import { DomainError } from "@/lib/video-metadata/contracts";
-import { createCliAuthService } from "./service";
+import { createCliAuthService, getDefaultBrowserCommand, openBrowser } from "./service";
+
+test("browser command keeps URLs as literal arguments on supported platforms", () => {
+  const url = "https://example.com/oauth?next=$(whoami); echo test & value=1";
+  assert.deepEqual(getDefaultBrowserCommand("darwin", url), { command: "open", args: [url] });
+  assert.deepEqual(getDefaultBrowserCommand("linux", url), { command: "xdg-open", args: [url] });
+  assert.deepEqual(getDefaultBrowserCommand("win32", url), {
+    command: "rundll32.exe", args: ["url.dll,FileProtocolHandler", url],
+  });
+});
+
+test("browser launcher disables shell and waits for spawn", async () => {
+  const child = new EventEmitter() as EventEmitter & { unref: () => void };
+  let unrefCalled = false;
+  child.unref = () => { unrefCalled = true; };
+  const url = "https://example.com/oauth?value=$(id)&next=one;two";
+  let invocation: unknown;
+  const opening = openBrowser(url, (command, args, options) => {
+    invocation = { command, args, options };
+    queueMicrotask(() => child.emit("spawn"));
+    return child as never;
+  });
+  await opening;
+  assert.deepEqual(invocation, {
+    ...getDefaultBrowserCommand(process.platform, url),
+    options: { stdio: "ignore", shell: false, detached: true },
+  });
+  assert.equal(unrefCalled, true);
+});
+
+test("browser launcher propagates spawn errors", async () => {
+  const child = new EventEmitter() as EventEmitter & { unref: () => void };
+  child.unref = () => undefined;
+  const error = new Error("browser unavailable");
+  const opening = openBrowser("https://example.com", () => {
+    queueMicrotask(() => child.emit("error", error));
+    return child as never;
+  });
+  await assert.rejects(opening, error);
+});
 import type { ActiveAuthStorage } from "./storage";
 
 function makeStorageStub(initialUserId: string | null = null): ActiveAuthStorage {
