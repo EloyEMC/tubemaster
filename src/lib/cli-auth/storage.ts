@@ -1,5 +1,13 @@
 import { constants as fsConstants } from "node:fs";
-import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -21,12 +29,30 @@ export type ActiveAuthStorage = {
   clear(): Promise<void>;
 };
 
+function storageError(operation: "read" | "write" | "rename" | "clear") {
+  const messages = {
+    read: "Could not read auth context file",
+    write: "Could not write auth context file",
+    rename: "Could not persist auth context file",
+    clear: "Could not clear auth context file",
+  } as const;
+  return new DomainError({
+    code: "AUTH_CALLBACK_INVALID",
+    message: messages[operation],
+    details: { operation },
+  });
+}
+
 export function createActiveAuthStorage(baseDir = process.cwd()): ActiveAuthStorage {
   const dataDir = path.join(baseDir, "data");
   const contextPath = path.join(dataDir, "auth-context.json");
 
   async function ensureDataDir() {
-    await mkdir(dataDir, { recursive: true });
+    try {
+      await mkdir(dataDir, { recursive: true });
+    } catch {
+      throw storageError("write");
+    }
 
     if (process.platform !== "win32") {
       try {
@@ -40,7 +66,12 @@ export function createActiveAuthStorage(baseDir = process.cwd()): ActiveAuthStor
   async function assertSafePermissions() {
     if (process.platform === "win32") return;
 
-    const stats = await stat(contextPath);
+    let stats;
+    try {
+      stats = await stat(contextPath);
+    } catch {
+      throw storageError("read");
+    }
     const mode = stats.mode & 0o777;
 
     if ((mode & 0o077) !== 0) {
@@ -56,14 +87,30 @@ export function createActiveAuthStorage(baseDir = process.cwd()): ActiveAuthStor
     async read() {
       try {
         await stat(contextPath);
-      } catch {
-        return null;
+      } catch (error: unknown) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+        throw storageError("read");
       }
 
       await assertSafePermissions();
 
-      const raw = await readFile(contextPath, "utf8");
-      const parsed = activeAuthContextSchema.safeParse(JSON.parse(raw));
+      let raw: string;
+      try {
+        raw = await readFile(contextPath, "utf8");
+      } catch {
+        throw storageError("read");
+      }
+      let json: unknown;
+      try {
+        json = JSON.parse(raw);
+      } catch {
+        throw new DomainError({
+          code: "AUTH_CALLBACK_INVALID",
+          message: "Auth context file is invalid",
+          details: [{ path: "", message: "Auth context file must contain valid JSON", code: "invalid_json" }],
+        });
+      }
+      const parsed = activeAuthContextSchema.safeParse(json);
 
       if (!parsed.success) {
         throw new DomainError({
@@ -90,26 +137,39 @@ export function createActiveAuthStorage(baseDir = process.cwd()): ActiveAuthStor
       };
 
       const tmpPath = path.join(dataDir, `.auth-context.${randomUUID()}.tmp`);
-      await writeFile(tmpPath, JSON.stringify(nextContext, null, 2), {
-        encoding: "utf8",
-        mode: fsConstants.S_IRUSR | fsConstants.S_IWUSR,
-      });
-
-      if (process.platform !== "win32") {
-        await chmod(tmpPath, 0o600);
+      try {
+        await writeFile(tmpPath, JSON.stringify(nextContext, null, 2), {
+          encoding: "utf8",
+          mode: fsConstants.S_IRUSR | fsConstants.S_IWUSR,
+        });
+        if (process.platform !== "win32") await chmod(tmpPath, 0o600);
+      } catch {
+        throw storageError("write");
       }
 
-      await rename(tmpPath, contextPath);
+      try {
+        await rename(tmpPath, contextPath);
+      } catch {
+        throw storageError("rename");
+      }
 
       if (process.platform !== "win32") {
-        await chmod(contextPath, 0o600);
+        try {
+          await chmod(contextPath, 0o600);
+        } catch {
+          throw storageError("write");
+        }
       }
 
       return nextContext;
     },
 
     async clear() {
-      await rm(contextPath, { force: true });
+      try {
+        await rm(contextPath, { force: true });
+      } catch {
+        throw storageError("clear");
+      }
     },
   };
 }

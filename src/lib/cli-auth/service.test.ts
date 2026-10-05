@@ -90,6 +90,27 @@ test("resolveEffectiveCredentialRef keeps explicit credential precedence", async
   assert.deepEqual(resolved, { userId: "explicit-user" });
 });
 
+test("service preserves typed storage errors without leaking platform details", async () => {
+  const service = createCliAuthService({
+    storage: {
+      ...makeStorageStub(),
+      read: async () => {
+        throw new DomainError({
+          code: "AUTH_CALLBACK_INVALID",
+          message: "Could not read auth context file",
+          details: { operation: "read" },
+        });
+      },
+    },
+  });
+  await assert.rejects(() => service.resolveEffectiveCredentialRef({}), (error: unknown) => {
+    assert.ok(error instanceof DomainError);
+    assert.equal(error.code, "AUTH_CALLBACK_INVALID");
+    assert.deepEqual(error.details, { operation: "read" });
+    return true;
+  });
+});
+
 test("resolveEffectiveCredentialRef falls back to active context", async () => {
   const service = createCliAuthService({
     storage: makeStorageStub("active-user"),
