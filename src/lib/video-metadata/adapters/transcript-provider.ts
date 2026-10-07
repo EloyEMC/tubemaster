@@ -345,7 +345,7 @@ export function createTranscriptProvider(deps: TranscriptProviderDeps = {}): Tra
         : []);
 
   return {
-    requiresCredentials: provider !== "yt-dlp" || deps.providers !== undefined,
+    requiresCredentials: provider === "youtube-captions",
     async getTranscript(args) {
       if (providers.length === 0) {
         return { status: "unsupported", reason: "provider-missing" };
