@@ -23,6 +23,8 @@ export type TranscriptEmbeddingInput = {
   readonly chunkIndex: number;
   readonly text: string;
   readonly order: number;
+  readonly provider: string;
+  readonly model: string;
 };
 
 export type TranscriptEmbeddingOutput = {
@@ -31,6 +33,9 @@ export type TranscriptEmbeddingOutput = {
   readonly chunkIndex: number;
   readonly vector: readonly number[];
   readonly dimension: number;
+  readonly order: number;
+  readonly provider: string;
+  readonly model: string;
 };
 
 export type TranscriptEmbeddingProviderFailure = {
@@ -57,6 +62,8 @@ export function createTranscriptEmbeddingInput(input: {
   chunkIndex: number;
   text: string;
   order: number;
+  provider: string;
+  model: string;
 }): TranscriptEmbeddingInput {
   if (input.text.trim().length === 0) {
     throw new RangeError("Transcript chunk text must not be empty");
@@ -72,6 +79,9 @@ export function createTranscriptEmbeddingOutput(input: {
   videoId: string;
   chunkIndex: number;
   vector: readonly number[];
+  order: number;
+  provider: string;
+  model: string;
 }): TranscriptEmbeddingOutput {
   validateTranscriptEmbeddingDimension(input.vector, input.vector.length);
   return {
@@ -80,6 +90,9 @@ export function createTranscriptEmbeddingOutput(input: {
     chunkIndex: input.chunkIndex,
     vector: input.vector,
     dimension: input.vector.length,
+    order: input.order,
+    provider: input.provider,
+    model: input.model,
   };
 }
 
@@ -114,8 +127,8 @@ export function validateTranscriptEmbeddingOutput(
 
 /**
  * Replace vectors by source identity without creating duplicate records.
- * Existing order is retained for replacements; newly indexed identities are
- * appended in the order supplied. Duplicate replacements use last-write-wins.
+ * Existing list position is retained for replacements; newly indexed identities
+ * are appended in the order supplied. Records retain their source order metadata.
  * Empty batches are a no-op.
  */
 export function replaceTranscriptEmbeddings(
@@ -127,24 +140,30 @@ export function replaceTranscriptEmbeddings(
   const merged = new Map<string, TranscriptEmbeddingOutput>();
   const order: string[] = [];
   let batchDimension: number | undefined;
-
-  for (const embedding of existing) {
+  let batchProvider: string | undefined;
+  let batchModel: string | undefined;
+  const validateBatch = (embedding: TranscriptEmbeddingOutput) => {
     validateTranscriptEmbeddingOutput(embedding);
     batchDimension ??= embedding.dimension;
+    batchProvider ??= embedding.provider;
+    batchModel ??= embedding.model;
     if (embedding.dimension !== batchDimension) {
       throw new RangeError("Transcript embedding batch contains incompatible dimensions");
     }
+    if (embedding.provider !== batchProvider || embedding.model !== batchModel) {
+      throw new RangeError("Transcript embedding batch contains incompatible provider/model metadata");
+    }
+  };
+
+  for (const embedding of existing) {
+    validateBatch(embedding);
     if (!merged.has(embedding.identity)) order.push(embedding.identity);
     merged.set(embedding.identity, embedding);
   }
 
   const replacementIdentities = new Set<string>();
   for (const embedding of replacements) {
-    validateTranscriptEmbeddingOutput(embedding);
-    batchDimension ??= embedding.dimension;
-    if (embedding.dimension !== batchDimension) {
-      throw new RangeError("Transcript embedding batch contains incompatible dimensions");
-    }
+    validateBatch(embedding);
     if (replacementIdentities.has(embedding.identity)) {
       throw new RangeError(`Duplicate transcript embedding identity: ${embedding.identity}`);
     }

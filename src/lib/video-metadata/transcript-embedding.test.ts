@@ -10,118 +10,76 @@ import {
   type TranscriptEmbeddingResult,
 } from "./transcript-embedding";
 
+const metadata = { provider: "provider-a", model: "model-a" };
+const output = (videoId: string, chunkIndex: number, order: number, vector: number[] = [0.1]) =>
+  createTranscriptEmbeddingOutput({ videoId, chunkIndex, order, vector, ...metadata });
+
 test("rejects an empty transcript chunk", () => {
   assert.throws(
-    () =>
-      createTranscriptEmbeddingInput({
-        videoId: "video-1",
-        chunkIndex: 0,
-        text: "  \n\t",
-        order: 0,
-      }),
+    () => createTranscriptEmbeddingInput({ videoId: "video-1", chunkIndex: 0, text: "  \n\t", order: 0, ...metadata }),
     /Transcript chunk text must not be empty/
   );
 });
 
-test("creates a stable identity for replacement and re-indexing", () => {
-  const first = createTranscriptEmbeddingInput({
-    videoId: "video:1",
-    chunkIndex: 2,
-    text: "hello",
-    order: 0,
-  });
-  const replacement = createTranscriptEmbeddingInput({
-    videoId: "video:1",
-    chunkIndex: 2,
-    text: "updated text",
-    order: 0,
-  });
-
+test("creates a stable identity for replacement and re-indexing while carrying metadata", () => {
+  const first = createTranscriptEmbeddingInput({ videoId: "video:1", chunkIndex: 2, text: "hello", order: 0, ...metadata });
+  const replacement = createTranscriptEmbeddingInput({ videoId: "video:1", chunkIndex: 2, text: "updated text", order: 0, provider: "other", model: "other" });
   assert.equal(first.identity, replacement.identity);
   assert.equal(first.identity, createTranscriptEmbeddingIdentity("video:1", 2));
+  assert.equal(first.provider, metadata.provider);
+  assert.equal(first.model, metadata.model);
 });
 
 test("represents provider failures without pretending an embedding exists", () => {
   const result: TranscriptEmbeddingResult = {
     status: "failed",
     identity: createTranscriptEmbeddingIdentity("video-1", 0),
-    error: {
-      code: "provider-failure",
-      message: "Embedding provider unavailable",
-      retryable: true,
-    },
+    error: { code: "provider-failure", message: "Embedding provider unavailable", retryable: true },
   };
-
   assert.equal(result.status, "failed");
   assert.equal(result.error.code, "provider-failure");
 });
 
-test("rejects vectors with a dimension different from the contract", () => {
-  assert.throws(
-    () => validateTranscriptEmbeddingDimension([0.1, 0.2], 3),
-    /Embedding vector dimension mismatch: expected 3, received 2/
-  );
-});
-
-test("accepts vectors with the expected dimension", () => {
+test("validates vector dimensions", () => {
+  assert.throws(() => validateTranscriptEmbeddingDimension([0.1, 0.2], 3), /dimension mismatch: expected 3, received 2/);
   assert.doesNotThrow(() => validateTranscriptEmbeddingDimension([0.1, 0.2], 2));
+  assert.throws(() => validateTranscriptEmbeddingOutput({ ...output("video-1", 0, 0), dimension: 2 }), /dimension mismatch/);
 });
 
-test("rejects an output whose declared dimension differs from its vector", () => {
-  assert.throws(
-    () => validateTranscriptEmbeddingOutput({ identity: createTranscriptEmbeddingIdentity("video-1", 0), videoId: "video-1", chunkIndex: 0, vector: [0.1], dimension: 2 }),
-    /Embedding vector dimension mismatch: expected 2, received 1/
-  );
-});
-
-test("derives output identity from the source chunk", () => {
-  const output = createTranscriptEmbeddingOutput({ videoId: "video-1", chunkIndex: 0, vector: [0.1] });
-
-  assert.equal(output.identity, createTranscriptEmbeddingIdentity("video-1", 0));
-  assert.equal(output.dimension, 1);
+test("derives output identity and retains source order and provider/model metadata", () => {
+  const record = output("video-1", 0, 3);
+  assert.equal(record.identity, createTranscriptEmbeddingIdentity("video-1", 0));
+  assert.equal(record.dimension, 1);
+  assert.equal(record.order, 3);
+  assert.equal(record.provider, metadata.provider);
+  assert.equal(record.model, metadata.model);
+  assert.doesNotThrow(() => validateTranscriptEmbeddingOutput(record));
 });
 
 test("rejects an output whose identity does not match its source chunk", () => {
-  assert.throws(
-    () => validateTranscriptEmbeddingOutput({ identity: createTranscriptEmbeddingIdentity("video-2", 0), videoId: "video-1", chunkIndex: 0, vector: [0.1], dimension: 1 }),
-    /identity does not match/
-  );
+  assert.throws(() => validateTranscriptEmbeddingOutput({ ...output("video-1", 0, 0), identity: createTranscriptEmbeddingIdentity("video-2", 0) }), /identity does not match/);
 });
 
-test("re-indexing replaces by identity instead of appending a duplicate", () => {
-  const identity = createTranscriptEmbeddingIdentity("video-1", 0);
-  const replacement = { identity, videoId: "video-1", chunkIndex: 0, vector: [0.9], dimension: 1 };
-  const result = replaceTranscriptEmbeddings(
-    [{ identity, videoId: "video-1", chunkIndex: 0, vector: [0.1], dimension: 1 }],
-    [replacement]
-  );
-
-  assert.deepEqual(result, [replacement]);
+test("re-indexing replaces by identity and retains replacement source order", () => {
+  const replacement = output("video-1", 0, 7, [0.9]);
+  const other = output("video-1", 1, 2);
+  assert.deepEqual(replaceTranscriptEmbeddings([output("video-1", 0, 0), other], [replacement]), [replacement, other]);
 });
 
 test("rejects repeated replacement identities instead of silently choosing one", () => {
-  const identity = createTranscriptEmbeddingIdentity("video-1", 0);
-  const first = { identity, videoId: "video-1", chunkIndex: 0, vector: [0.1], dimension: 1 };
-  const duplicate = { identity, videoId: "video-1", chunkIndex: 0, vector: [0.9], dimension: 1 };
-
-  assert.throws(
-    () => replaceTranscriptEmbeddings([], [first, duplicate]),
-    /Duplicate transcript embedding identity/
-  );
+  assert.throws(() => replaceTranscriptEmbeddings([], [output("video-1", 0, 0), output("video-1", 0, 1, [0.9])]), /Duplicate transcript embedding identity/);
 });
 
-test("rejects incompatible dimensions in one replacement batch", () => {
-  const first = createTranscriptEmbeddingOutput({ videoId: "video-1", chunkIndex: 0, vector: [0.1] });
-  const second = createTranscriptEmbeddingOutput({ videoId: "video-1", chunkIndex: 1, vector: [0.1, 0.2] });
-
-  assert.throws(
-    () => replaceTranscriptEmbeddings([], [first, second]),
-    /incompatible dimensions/
-  );
+test("rejects incompatible dimensions, providers, and models in replacement batches", () => {
+  const first = output("video-1", 0, 0);
+  const second = output("video-1", 1, 1);
+  assert.throws(() => replaceTranscriptEmbeddings([], [first, output("video-1", 1, 1, [0.1, 0.2])]), /incompatible dimensions/);
+  assert.throws(() => replaceTranscriptEmbeddings([first], [{ ...first, provider: "provider-b" }]), /incompatible provider\/model/);
+  assert.throws(() => replaceTranscriptEmbeddings([], [first, { ...second, model: "model-b" }]), /incompatible provider\/model/);
+  assert.deepEqual(replaceTranscriptEmbeddings([first], [second]), [first, second]);
 });
 
 test("treats an empty replacement batch as a no-op", () => {
-  const existing = [{ identity: createTranscriptEmbeddingIdentity("video-1", 0), videoId: "video-1", chunkIndex: 0, vector: [0.1], dimension: 1 }];
-
+  const existing = [output("video-1", 0, 0)];
   assert.strictEqual(replaceTranscriptEmbeddings(existing, []), existing);
 });
