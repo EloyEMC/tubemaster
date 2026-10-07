@@ -541,6 +541,16 @@ test("transcript provider maps empty normalized SRT to no-captions", async () =>
       });
     });
 
+    test("transcript provider drops malformed cue timing and indexes but retains non-adjacent repeats", async () => {
+      const provider = makeProvider({
+        list: async () => ({ data: { items: [{ id: "caption-1" }] } }),
+        download: async () => ({ data: "1\n00:00:xx,100 --> 00:00:01,000\nAgain\n\n2\n00:00:01,000 --> 00:00:02,000\nMiddle\n\n3\n00:00:02,000 --> 00:00:03,000\nAgain\n\n42" }),
+      });
+      assert.deepEqual(await provider.getTranscript({ credentials: makeCredentials(), videoId: "video-1" }), {
+        status: "available", text: "Again\nMiddle\nAgain\n42",
+      });
+    });
+
     test("transcript provider decodes equivalent string, Buffer, and ArrayBuffer payloads", async () => {
           const source = "1\\r\\n00:00:00,000 --> 00:00:01,000\\r\\n<b>Same</b>\\r\\n"
             .replaceAll(String.fromCharCode(92, 114), String.fromCharCode(13))

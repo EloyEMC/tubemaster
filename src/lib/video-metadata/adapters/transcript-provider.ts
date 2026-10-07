@@ -63,6 +63,7 @@ const TRANSIENT_API_REASONS = new Set(["backenderror", "internalerror"]);
     const INLINE_TIMESTAMP = /<\d{1,2}:\d{2}:\d{2}[,.]\d{3}>/g;
     const BASIC_MARKUP = /<\/?(?:b|i|u|c(?:\.[^ >]+)?|v(?:\s+[^>]*)?|lang(?:\s+[^>]*)?)>/gi;
     const CUE_METADATA = /^(?:NOTE|STYLE|REGION|X-TIMESTAMP-MAP)\b/i;
+    const CUE_TIMING = /^\S*\d\S*\s+-->\s+\S*\d\S*(?:\s+.*)?$/;
 
     function normalizeTranscript(text: string) {
       const normalizedLines = text.replace(/\r\n?/g, "\n").split("\n");
@@ -72,17 +73,13 @@ const TRANSIENT_API_REASONS = new Set(["backenderror", "internalerror"]);
       for (const block of blocks) {
         const lines = block.split("\n").map((line) => line.trim());
         if (lines.length === 0 || lines.every((line) => line === "")) continue;
-        if (lines[0].replace(/^\uFEFF/, "").toUpperCase() === "WEBVTT") continue;
         if (CUE_METADATA.test(lines[0])) continue;
 
-        const timestampIndex = lines.findIndex((line) => TRANSCRIPT_TIMESTAMP.test(line));
-        const transcriptLines =
-          timestampIndex >= 0
-            ? lines.filter((line) => !TRANSCRIPT_TIMESTAMP.test(line))
-            : lines;
-
-        for (const line of transcriptLines) {
-          if (/^\d+$/.test(line)) continue;
+        for (let index = 0; index < lines.length; index += 1) {
+          const line = lines[index];
+          if (line.replace(/^\uFEFF/, "").toUpperCase() === "WEBVTT") continue;
+          if (TRANSCRIPT_TIMESTAMP.test(line) || CUE_TIMING.test(line)) continue;
+          if (/^\d+$/.test(line) && (TRANSCRIPT_TIMESTAMP.test(lines[index + 1] ?? "") || CUE_TIMING.test(lines[index + 1] ?? ""))) continue;
           const cleaned = line
             .replace(INLINE_TIMESTAMP, "")
             .replace(BASIC_MARKUP, "")
