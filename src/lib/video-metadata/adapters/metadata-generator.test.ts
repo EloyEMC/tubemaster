@@ -38,6 +38,7 @@ test("metadata generator returns valid draft in rule-based mode", async () => {
       publishedAt: "2024-01-01T00:00:00Z",
     },
     transcript: { status: "available", text: "Transcript body" },
+    transcriptChunks: [{ index: 0, text: "Transcript body" }],
     editorialPrompt: "Hacé un título editorial",
   });
 
@@ -45,6 +46,39 @@ test("metadata generator returns valid draft in rule-based mode", async () => {
   assert.ok(draft.description.length > 0);
   assert.ok(draft.promptVersion.length > 0);
 
+});
+
+test("rule-based description uses ordered chunks rather than raw transcript text", async () => {
+  process.env.METADATA_GENERATOR_MODE = "rule-based";
+  const generator = createMetadataGenerator();
+  const video = {
+    videoId: "video-1",
+    title: "Title",
+    description: "Description",
+    publishedAt: "2024-01-01T00:00:00Z",
+  };
+  const args = {
+    video,
+    transcript: { status: "available" as const, text: "raw text should not appear" },
+    transcriptChunks: [
+      { index: 0, text: "First paragraph" },
+      { index: 1, text: "Second paragraph" },
+    ],
+    editorialPrompt: "Prompt",
+  };
+  const first = await generator.generate(args);
+  assert.match(first.description, /First paragraph Second paragraph/);
+  assert.doesNotMatch(first.description, /raw text should not appear/);
+  assert.deepEqual(await generator.generate(args), first);
+
+  const empty = await generator.generate({ ...args, transcriptChunks: [] });
+  assert.doesNotMatch(empty.description, /raw text should not appear/);
+  const unavailable = await generator.generate({
+    ...args,
+    transcript: { status: "unavailable", reason: "no-captions" },
+    transcriptChunks: [],
+  });
+  assert.match(unavailable.description, /Transcript unavailable/);
 });
 
 test("metadata generator rejects malformed raw-json as validation_failed", async () => {
@@ -65,6 +99,7 @@ test("metadata generator rejects malformed raw-json as validation_failed", async
           publishedAt: "2024-01-01T00:00:00Z",
         },
         transcript: { status: "unsupported", reason: "provider-missing" },
+        transcriptChunks: [],
         editorialPrompt: "Prompt",
       }),
     (error: unknown) => error instanceof DomainError && error.code === "validation_failed"

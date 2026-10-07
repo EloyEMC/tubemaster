@@ -11,6 +11,7 @@ import {
   type VideoMetadataContext,
   type VideoMetadataItem,
 } from "./contracts";
+import { chunkTranscript, type TranscriptChunk } from "./transcript-chunker";
 import {
   applyMetadataInputSchema,
   applyMetadataOutputSchema,
@@ -60,6 +61,7 @@ type ServiceDependencies = {
     generate(args: {
       video: VideoMetadataItem;
       transcript: TranscriptResult;
+      transcriptChunks: TranscriptChunk[];
       editorialPrompt: string;
     }): Promise<MetadataDraft>;
   };
@@ -283,6 +285,10 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
         const draft = await deps.metadataGenerator.generate({
           video,
           transcript: transcriptResult,
+          transcriptChunks:
+            transcriptResult.status === "available"
+              ? chunkTranscript(transcriptResult.text)
+              : [],
           editorialPrompt: parsedInput.editorialPrompt,
         });
 
