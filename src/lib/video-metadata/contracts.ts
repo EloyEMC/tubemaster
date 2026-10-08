@@ -60,13 +60,18 @@ export type VideoMetadataItem = {
   publishedAt: string;
 };
 
-export type TranscriptDiagnosticStage = "captions-list" | "captions-download" | "public-video";
+export type TranscriptDiagnosticStage =
+  | "captions-list"
+  | "captions-download"
+  | "public-video"
+  | "local-audio"
+  | "local-transcription";
 
 export type TranscriptDiagnostic = {
   stage: TranscriptDiagnosticStage;
   httpStatus?: number;
   apiReason?: string;
-  errorCode?: "timeout" | "process-error" | "non-zero-exit" | "malformed-output";
+  errorCode?: "timeout" | "process-error" | "non-zero-exit" | "malformed-output" | "configuration-error";
   retriable?: boolean;
 };
 
@@ -78,8 +83,16 @@ export type TranscriptUnavailableReason =
   | "api-error"
   | "unknown";
 
+export type TranscriptProviderName = "youtube-captions" | "yt-dlp";
+
+export type TranscriptSegment = {
+  start: number;
+  end: number;
+  text: string;
+};
+
 export type TranscriptResult =
-  | { status: "available"; text: string; language?: string }
+  | { status: "available"; text: string; language?: string; source?: "captions" | "local-whisper"; segments?: TranscriptSegment[] }
   | {
       status: "unavailable";
       reason: TranscriptUnavailableReason;
