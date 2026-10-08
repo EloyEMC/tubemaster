@@ -20,6 +20,18 @@ export const users = sqliteTable("users", {
   selectedChannelId: text("selected_channel_id"),
 });
 
+export const quotaUsage = sqliteTable("youtube_quota_usage", {
+  id: text("id").primaryKey(),
+  scopeType: text("scope_type").notNull(),
+  scopeId: text("scope_id"),
+  channelId: text("channel_id"),
+  bucketStart: text("bucket_start").notNull(),
+  operation: text("operation").notNull(),
+  estimatedUnits: integer("estimated_units").notNull(),
+  operationId: text("operation_id").notNull(),
+  recordedAt: text("recorded_at").notNull(),
+});
+
 export const rules = sqliteTable("rules", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: text("user_id")
@@ -37,6 +49,15 @@ export const rules = sqliteTable("rules", {
     .$defaultFn(() => new Date()),
 });
 
+export const transcriptIndexEntries = sqliteTable("transcript_index_entries", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  videoId: text("video_id").notNull(),
+  chunkIndex: integer("chunk_index").notNull(),
+  text: text("text").notNull(),
+  identity: text("identity").notNull(),
+  order: integer("entry_order").notNull(),
+});
+
 async function initializeDatabase() {
   await rawClient.executeMultiple(`
     CREATE TABLE IF NOT EXISTS users (
@@ -50,6 +71,17 @@ async function initializeDatabase() {
       oauth_scope TEXT,
       selected_channel_id TEXT
     );
+    CREATE TABLE IF NOT EXISTS youtube_quota_usage (
+      id TEXT PRIMARY KEY,
+      scope_type TEXT NOT NULL,
+      scope_id TEXT,
+      channel_id TEXT,
+      bucket_start TEXT NOT NULL,
+      operation TEXT NOT NULL,
+      estimated_units INTEGER NOT NULL,
+      operation_id TEXT NOT NULL,
+      recorded_at TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS rules (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id TEXT NOT NULL REFERENCES users(id),
@@ -62,6 +94,31 @@ async function initializeDatabase() {
       enabled INTEGER NOT NULL DEFAULT 1,
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
+    CREATE INDEX IF NOT EXISTS youtube_quota_usage_scope_date_operation_idx
+      ON youtube_quota_usage (scope_type, scope_id, bucket_start, operation);
+    -- The channel-aware index is created after the additive migration below.
+    CREATE INDEX IF NOT EXISTS youtube_quota_usage_operation_id_idx
+      ON youtube_quota_usage (operation_id);
+    CREATE TABLE IF NOT EXISTS transcript_index_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      video_id TEXT NOT NULL,
+      chunk_index INTEGER NOT NULL,
+      text TEXT NOT NULL,
+      identity TEXT NOT NULL,
+      entry_order INTEGER NOT NULL
+    );
+  `);
+
+  // Migration: add quota channel_id if missing (idempotent)
+  try {
+    await rawClient.execute("ALTER TABLE youtube_quota_usage ADD COLUMN channel_id TEXT");
+  } catch {
+    // Column already exists
+  }
+
+  await rawClient.execute(`
+    CREATE INDEX IF NOT EXISTS youtube_quota_usage_scope_channel_date_operation_idx
+      ON youtube_quota_usage (scope_type, scope_id, channel_id, bucket_start, operation)
   `);
 
   // Migration: add selected_channel_id if missing (idempotent)
@@ -108,7 +165,7 @@ const client = new Proxy(rawClient, {
   },
 });
 
-export const db = drizzle(client, { schema: { users, rules } });
+export const db = drizzle(client, { schema: { users, rules, quotaUsage, transcriptIndexEntries } });
 
 export type StoredOAuthToken = {
   userId: string;
