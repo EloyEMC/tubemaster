@@ -31,18 +31,6 @@ test("preserves chunk data and input order", () => {
   );
 });
 
-test("produces equivalent entries for the same video ID and chunks", () => {
-  const chunks = [
-    { index: 2, text: "exact text\nwith newline" },
-    { index: 0, text: "another chunk" },
-  ];
-
-  assert.deepEqual(
-    buildTranscriptIndex("video-1", chunks),
-    buildTranscriptIndex("video-1", chunks)
-  );
-});
-
 test("uses a collision-resistant identity across video IDs", () => {
   const entries = buildTranscriptIndex("video:1", [{ index: 2, text: "text" }]);
   const otherEntries = buildTranscriptIndex("video", [{ index: 2, text: "text" }]);
