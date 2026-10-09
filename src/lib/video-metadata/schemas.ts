@@ -82,7 +82,7 @@ export const listVideosOutputSchema = z.object({
 
 export const transcriptInputSchema = z
   .object({
-    credentialRef: credentialRefSchema,
+    credentialRef: credentialRefSchema.optional(),
     videoId: z.string().min(1),
   })
   .strict();

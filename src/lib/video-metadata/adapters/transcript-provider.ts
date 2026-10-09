@@ -1,5 +1,6 @@
 import { createGoogleOAuthClient } from "@/lib/auth";
 import { createYoutubeClient } from "@/lib/youtube";
+import { createYtDlpTranscriptProvider } from "./yt-dlp-transcript-provider";
 import type {
   ResolvedCredentials,
   TranscriptDiagnostic,
@@ -31,8 +32,9 @@ type YoutubeClientLike = {
 };
 
 export type TranscriptProvider = {
+  requiresCredentials?: boolean;
   getTranscript(args: {
-    credentials: ResolvedCredentials;
+    credentials?: ResolvedCredentials;
     videoId: string;
   }): Promise<TranscriptResult>;
 };
@@ -40,6 +42,7 @@ export type TranscriptProvider = {
 type TranscriptProviderDeps = {
   provider?: string;
   providers?: TranscriptProvider[];
+  createPublicProvider?: () => TranscriptProvider;
   createOAuthClient?: () => OAuthClientLike;
   createYoutubeClient?: (oauth: OAuthClientLike) => YoutubeClientLike;
 };
@@ -255,9 +258,12 @@ function createYoutubeTranscriptProvider(deps: TranscriptProviderDeps) {
 
   return {
     async getTranscript(args: {
-      credentials: ResolvedCredentials;
+      credentials?: ResolvedCredentials;
       videoId: string;
     }): Promise<TranscriptResult> {
+      if (!args.credentials) {
+        return { status: "unsupported", reason: "provider-missing" };
+      }
       const oauth2 = createOAuthClient();
       oauth2.setCredentials({
         access_token: args.credentials.accessToken,
@@ -332,9 +338,14 @@ export function createTranscriptProvider(deps: TranscriptProviderDeps = {}): Tra
   const provider = deps.provider ?? process.env.YOUTUBE_TRANSCRIPT_PROVIDER ?? "youtube-captions";
   const providers =
     deps.providers ??
-    (provider === "youtube-captions" ? [createYoutubeTranscriptProvider(deps)] : []);
+    (provider === "youtube-captions"
+      ? [createYoutubeTranscriptProvider(deps)]
+      : provider === "yt-dlp"
+        ? [deps.createPublicProvider?.() ?? createYtDlpTranscriptProvider()]
+        : []);
 
   return {
+    requiresCredentials: provider !== "yt-dlp" || deps.providers !== undefined,
     async getTranscript(args) {
       if (providers.length === 0) {
         return { status: "unsupported", reason: "provider-missing" };

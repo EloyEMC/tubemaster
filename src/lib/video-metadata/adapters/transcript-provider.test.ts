@@ -501,6 +501,23 @@ test("transcript provider maps empty normalized SRT to no-captions", async () =>
   });
 });
 
+    test("explicit public selection passes video id without credentials and retains unavailable envelope", async () => {
+      const calls: Array<{ videoId: string; credentials?: ResolvedCredentials }> = [];
+      const provider = createTranscriptProvider({
+        provider: "yt-dlp",
+        createPublicProvider: () => ({
+          getTranscript: async (args) => {
+            calls.push(args);
+            return { status: "unavailable", reason: "no-captions" };
+          },
+        }),
+      });
+      assert.equal(provider.requiresCredentials, false);
+      assert.deepEqual(await provider.getTranscript({ videoId: "video-1" }),
+        { status: "unavailable", reason: "no-captions" });
+      assert.deepEqual(calls, [{ videoId: "video-1" }]);
+    });
+
     test("transcript provider returns unsupported when provider is not youtube-captions", async () => {
       const provider = createTranscriptProvider({ provider: "disabled" });
       const result = await provider.getTranscript({

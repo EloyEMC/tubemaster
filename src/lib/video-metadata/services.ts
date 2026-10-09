@@ -51,8 +51,9 @@ type ServiceDependencies = {
     }): Promise<void>;
   };
   transcriptProvider: {
+    requiresCredentials?: boolean;
     getTranscript(args: {
-      credentials: ResolvedCredentials;
+      credentials?: ResolvedCredentials;
       videoId: string;
     }): Promise<TranscriptResult>;
   };
@@ -235,10 +236,15 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
       const parsedInput = parseWithSchema(transcriptInputSchema, input, "transcript input");
 
       try {
-        const credentials = await deps.authResolver.resolve({
-          credentialRef: parsedInput.credentialRef,
-          requiredScopes: [YOUTUBE_READ_SCOPE],
-        });
+        if (deps.transcriptProvider.requiresCredentials !== false && !parsedInput.credentialRef) {
+          throw new DomainError({ code: "validation_failed", message: "Invalid transcript input" });
+        }
+        const credentials = deps.transcriptProvider.requiresCredentials === false
+          ? undefined
+          : await deps.authResolver.resolve({
+              credentialRef: parsedInput.credentialRef,
+              requiredScopes: [YOUTUBE_READ_SCOPE],
+            });
 
         const transcript = await deps.transcriptProvider.getTranscript({
           credentials,

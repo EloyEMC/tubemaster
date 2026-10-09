@@ -8,6 +8,8 @@ import type {
 } from "./contracts";
 import { DomainError } from "./contracts";
 import { createVideoMetadataServices, type ServiceDependencies } from "./services";
+import { createTranscriptProvider } from "./adapters/transcript-provider";
+import { createYtDlpTranscriptProvider } from "./adapters/yt-dlp-transcript-provider";
 
 function makeCredentials(): ResolvedCredentials {
   return {
@@ -135,6 +137,63 @@ test("listVideos maps unknown adapter errors to unauthorized", async () => {
     () => services.listVideos({ credentialRef: { userId: "user-1" } }),
     (error: unknown) => error instanceof DomainError && error.code === "unauthorized"
   );
+});
+
+test("explicit yt-dlp selection reaches public captions without resolving OAuth", async () => {
+  let authCalls = 0;
+  const calls: string[][] = [];
+  const provider = createTranscriptProvider({
+    provider: "yt-dlp",
+    createPublicProvider: () => createYtDlpTranscriptProvider({
+      run: async (args) => {
+        calls.push(args);
+        return { exitCode: 0, stdout: "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nPublic caption", stderr: "" };
+      },
+    }),
+  });
+  const services = createVideoMetadataServices(makeDeps({
+    authResolver: { resolve: async () => { authCalls++; throw new Error("OAuth required"); } },
+    transcriptProvider: provider,
+  }));
+
+  const result = await services.getTranscript({ videoId: "video-1" });
+  assert.deepEqual(result.transcript, { status: "available", text: "Public caption", language: "en" });
+  assert.equal(authCalls, 0);
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0]?.includes("--write-subs"));
+});
+
+test("official transcript rejects missing credentials with validation_failed before OAuth", async () => {
+  let authCalls = 0;
+  let providerCalls = 0;
+  const services = createVideoMetadataServices(makeDeps({
+    authResolver: { resolve: async () => { authCalls++; return makeCredentials(); } },
+    transcriptProvider: {
+      getTranscript: async () => { providerCalls++; return { status: "available", text: "unexpected" }; },
+    },
+  }));
+
+  await assert.rejects(() => services.getTranscript({ videoId: "video-1" }),
+    (error: unknown) => error instanceof DomainError && error.code === "validation_failed");
+  assert.equal(authCalls, 0);
+  assert.equal(providerCalls, 0);
+});
+
+test("official transcript selection still resolves OAuth before invoking provider", async () => {
+  let authCalls = 0;
+  let providerCalls = 0;
+  const services = createVideoMetadataServices(makeDeps({
+    authResolver: { resolve: async () => { authCalls++; throw new Error("OAuth required"); } },
+    transcriptProvider: {
+      requiresCredentials: true,
+      getTranscript: async () => { providerCalls++; return { status: "available", text: "unexpected" }; },
+    },
+  }));
+
+  await assert.rejects(() => services.getTranscript({ credentialRef: { userId: "user-1" }, videoId: "video-1" }),
+    (error: unknown) => error instanceof DomainError && error.code === "transcript_unavailable");
+  assert.equal(authCalls, 1);
+  assert.equal(providerCalls, 0);
 });
 
 test("getTranscript keeps available status", async () => {
