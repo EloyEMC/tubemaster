@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getAuthenticatedYoutube } from "@/lib/youtube";
+import { selectChannelThumbnail } from "@/components/channel-thumbnail";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -24,7 +25,7 @@ export async function GET() {
     channel: {
       id: channel.id,
       title: channel.snippet?.title,
-      thumbnail: channel.snippet?.thumbnails?.default?.url,
+      thumbnail: selectChannelThumbnail(channel.snippet?.thumbnails),
       videoCount: channel.statistics?.videoCount,
     },
   });
