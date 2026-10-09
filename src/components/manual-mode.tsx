@@ -26,7 +26,7 @@ export function ManualMode() {
   const [loadingVideos, setLoadingVideos] = useState(false);
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
   const [result, setResult] = useState<
-    { added?: number; removed?: number } | null
+    { added?: number; removed?: number; failed?: number } | null
   >(null);
   const [batchIds, setBatchIds] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -159,25 +159,49 @@ export function ManualMode() {
     if (videoIds.length === 0 || !targetPlaylist) return;
     setLoading(true);
     setResult(null);
+    setError(null);
 
     const endpoint =
       action === "add"
         ? "/api/youtube/add-to-playlist"
         : "/api/youtube/remove-from-playlist";
 
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ videoIds, playlistId: targetPlaylist }),
-    });
-
-    const data = await res.json();
-    setResult(
-      action === "add" ? { added: data.added } : { removed: data.removed }
-    );
-    if (subTab === "browse") setSelected(new Set());
-    if (subTab === "batch") setBatchIds("");
-    setLoading(false);
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoIds, playlistId: targetPlaylist }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? `Could not ${action} videos (HTTP ${res.status}).`);
+        return;
+      }
+      if (action === "add") {
+        if (typeof data.added !== "number") {
+          setError("Could not confirm how many videos were added. Please check the playlist.");
+          return;
+        }
+        const failures: { videoId: string; reason: string }[] = data.failures ?? [];
+        if (failures.length) {
+          setResult({ added: data.added, failed: failures.length });
+          setError(`Could not add ${failures.length} video(s): ${failures.map((failure) => `${failure.videoId} (${failure.reason})`).join(", ")}.`);
+          if (subTab === "browse") {
+            setSelected(new Set(failures.map((failure) => failure.videoId)));
+          }
+          return;
+        }
+        setResult({ added: data.added });
+      } else {
+        setResult({ removed: data.removed });
+      }
+      if (subTab === "browse") setSelected(new Set());
+      if (subTab === "batch") setBatchIds("");
+    } catch {
+      setError(`Could not ${action} videos. Please try again.`);
+    } finally {
+      setLoading(false);
+    }
   }
 
   const batchCount = parseVideoIds(batchIds).length;
@@ -378,12 +402,6 @@ export function ManualMode() {
             )}
           </div>
 
-          {error && (
-            <div className="rounded-lg border border-red-900 bg-red-950/50 p-3 text-sm text-red-400">
-              {error}
-            </div>
-          )}
-
           {videos.length > 0 && (
             <>
               <input
@@ -438,11 +456,17 @@ export function ManualMode() {
         </>
       )}
 
+      {error && (
+        <div role="alert" className="rounded-lg border border-red-900 bg-red-950/50 p-3 text-sm text-red-400">
+          {error}
+        </div>
+      )}
+
       {result && (
         <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
           <p className="text-sm font-medium text-green-500">
             {result.added !== undefined
-              ? `${result.added} video(s) added to playlist!`
+              ? `${result.added} video(s) added to playlist${result.failed ? `; ${result.failed} failed.` : "!"}`
               : `${result.removed} video(s) removed from playlist!`}
           </p>
         </div>

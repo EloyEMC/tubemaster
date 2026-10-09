@@ -34,7 +34,11 @@ export function createAddToPlaylistPostHandler(
       playlistId,
     });
 
-    return NextResponse.json({ added: result.added });
+    return NextResponse.json({
+      added: result.added,
+      attempted: result.attempted,
+      failures: result.failures,
+    });
   };
 }
 
