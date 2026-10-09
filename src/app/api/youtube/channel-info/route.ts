@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getAuthenticatedYoutube } from "@/lib/youtube";
-import { selectChannelThumbnail } from "@/components/channel-thumbnail";
+import { channelThumbnailCandidates } from "@/components/channel-thumbnail";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -21,11 +21,13 @@ export async function GET() {
     return NextResponse.json({ channel: null });
   }
 
+  const thumbnailCandidates = channelThumbnailCandidates(channel.snippet?.thumbnails);
   return NextResponse.json({
     channel: {
       id: channel.id,
       title: channel.snippet?.title,
-      thumbnail: selectChannelThumbnail(channel.snippet?.thumbnails),
+      thumbnail: thumbnailCandidates[0],
+      thumbnailCandidates,
       videoCount: channel.statistics?.videoCount,
     },
   });

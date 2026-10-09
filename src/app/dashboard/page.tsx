@@ -7,12 +7,13 @@ import { RuleForm } from "@/components/rule-form";
 import { RuleList } from "@/components/rule-list";
 import { RunButton } from "@/components/run-button";
 import { ManualMode } from "@/components/manual-mode";
-import { fallbackChannelThumbnail } from "@/components/channel-thumbnail";
+import { nextChannelThumbnail } from "@/components/channel-thumbnail";
 
 type ChannelInfo = {
   id: string;
   title: string;
   thumbnail?: string;
+  thumbnailCandidates?: string[];
   videoCount?: string;
 };
 
@@ -34,12 +35,10 @@ export default function Dashboard() {
   const [tab, setTab] = useState<Tab>("manual");
   const [channel, setChannel] = useState<ChannelInfo | null>(null);
   const [failedThumbnail, setFailedThumbnail] = useState<string | undefined>();
-  const [failedFallback, setFailedFallback] = useState<string | undefined>();
-  const primaryThumbnail = channel?.thumbnail;
-  const candidate = failedThumbnail === primaryThumbnail
-    ? fallbackChannelThumbnail(primaryThumbnail, session?.user?.image, primaryThumbnail)
-    : primaryThumbnail;
-  const thumbnail = candidate === failedFallback ? undefined : candidate;
+  const candidates = channel?.thumbnailCandidates ?? (channel?.thumbnail ? [channel.thumbnail] : []);
+  const thumbnail = failedThumbnail === undefined
+    ? candidates[0]
+    : nextChannelThumbnail(candidates, failedThumbnail);
 
   const fetchRules = useCallback(async () => {
     const res = await fetch("/api/rules");
@@ -50,6 +49,7 @@ export default function Dashboard() {
   const fetchChannel = useCallback(async () => {
     const res = await fetch("/api/youtube/channel-info");
     const data = await res.json();
+    setFailedThumbnail(undefined);
     setChannel(data.channel);
   }, []);
 
@@ -107,10 +107,7 @@ export default function Dashboard() {
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={thumbnail}
-              onError={() => {
-                if (thumbnail === primaryThumbnail) setFailedThumbnail(primaryThumbnail);
-                else setFailedFallback(thumbnail);
-              }}
+              onError={() => setFailedThumbnail(thumbnail)}
               alt={channel?.title ?? "Channel"}
               className="h-10 w-10 rounded-full"
             />
