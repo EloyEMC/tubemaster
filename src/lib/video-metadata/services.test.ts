@@ -217,6 +217,62 @@ test("getTranscript keeps unsupported status", async () => {
   assert.deepEqual(result.transcript, { status: "unsupported", reason: "provider-missing" });
 });
 
+test("previewMetadata passes ordered chunks from available normalized text without changing its envelope", async () => {
+  const transcript: TranscriptResult = {
+    status: "available",
+    text: "First paragraph.\n\nSecond paragraph.",
+    language: "en",
+  };
+  let received: unknown;
+  const services = createVideoMetadataServices(makeDeps({
+    transcriptProvider: { getTranscript: async () => transcript },
+    metadataGenerator: {
+      generate: async (args) => {
+        received = args;
+        return makeDraft();
+      },
+    },
+  }));
+
+  const result = await services.previewMetadata({
+    credentialRef: { userId: "user-1" },
+    videoId: "video-1",
+    editorialPrompt: "Keep going",
+  });
+
+  assert.deepEqual((received as { transcriptChunks: unknown }).transcriptChunks, [
+    { index: 0, text: "First paragraph." },
+    { index: 1, text: "Second paragraph." },
+  ]);
+  assert.deepEqual(result.transcript, transcript);
+});
+
+test("previewMetadata does not chunk empty, unavailable, or unsupported transcripts", async () => {
+  for (const transcript of [
+    { status: "available", text: "  \n  " },
+    { status: "unavailable", reason: "no-captions" },
+    { status: "unsupported", reason: "provider-missing" },
+  ] as TranscriptResult[]) {
+    let chunks: unknown;
+    const services = createVideoMetadataServices(makeDeps({
+      transcriptProvider: { getTranscript: async () => transcript },
+      metadataGenerator: {
+        generate: async (args) => {
+          chunks = args.transcriptChunks;
+          return makeDraft();
+        },
+      },
+    }));
+    const result = await services.previewMetadata({
+      credentialRef: { userId: "user-1" },
+      videoId: "video-1",
+      editorialPrompt: "Keep going",
+    });
+    assert.deepEqual(chunks, []);
+    assert.deepEqual(result.transcript, transcript);
+  }
+});
+
 test("previewMetadata returns one finalTitle and one description", async () => {
   const services = createVideoMetadataServices(makeDeps());
 

@@ -1,5 +1,6 @@
 import { DomainError, type MetadataDraft, type TranscriptResult, type VideoMetadataItem } from "../contracts";
 import { EDITORIAL_PROMPT_VERSION, buildEditorialPromptTemplate } from "../editorial-template";
+import type { TranscriptChunk } from "../transcript-chunker";
 import { metadataDraftSchema, parseWithSchema } from "../schemas";
 
 function compactWhitespace(value: string) {
@@ -9,11 +10,12 @@ function compactWhitespace(value: string) {
 function buildRuleBasedDraft(args: {
   video: VideoMetadataItem;
   transcript: TranscriptResult;
+  transcriptChunks: TranscriptChunk[];
   editorialPrompt: string;
 }): MetadataDraft {
   const transcriptHint =
     args.transcript.status === "available"
-      ? args.transcript.text.slice(0, 180)
+      ? args.transcriptChunks.map((chunk) => chunk.text).join(" ").slice(0, 180)
       : `Transcript ${args.transcript.status}`;
 
   return {
@@ -35,6 +37,7 @@ export function createMetadataGenerator() {
     async generate(args: {
       video: VideoMetadataItem;
       transcript: TranscriptResult;
+      transcriptChunks: TranscriptChunk[];
       editorialPrompt: string;
     }): Promise<MetadataDraft> {
       const prompt = buildEditorialPromptTemplate(args);
