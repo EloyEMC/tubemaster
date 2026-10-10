@@ -17,7 +17,8 @@ Make authenticated manual playlist operations observable by showing the selected
 
 ## Evidence
 - Work-unit commit: `c8e57f0456463081891a0cf4568695f0f9240ced` on PR #10.
-- Stacked propagation: PR #15 head `3f8c69623ae2c51c6decb153895287c6a25eec12`.
+- ODD docs commit: `c19dcf95f1e06cba0f31e651a40bbd336e5e1c70` on PR #10.
+- Stacked propagation: PR #15 head `764fe5010060be413efcbaffa531f94683265d6c`.
 - Route/UI focused tests: **3 passed, 0 failed**.
 - Playlist helper test: **1 passed, 0 failed**.
 - `git diff --check`: passed.
