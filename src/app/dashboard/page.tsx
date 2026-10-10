@@ -7,6 +7,7 @@ import { RuleForm } from "@/components/rule-form";
 import { RuleList } from "@/components/rule-list";
 import { RunButton } from "@/components/run-button";
 import { ManualMode } from "@/components/manual-mode";
+import { TranscriptDashboard } from "@/components/transcript-dashboard";
 import { nextChannelThumbnail } from "@/components/channel-thumbnail";
 
 type ChannelInfo = {
@@ -131,6 +132,8 @@ export default function Dashboard() {
           Switch Channel
         </button>
       </div>
+
+      <TranscriptDashboard />
 
       <div className="mb-6 flex gap-1 rounded-lg bg-zinc-900 p-1">
         <button

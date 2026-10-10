@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { channelThumbnailCandidates, nextChannelThumbnail, selectChannelThumbnail } from "../../components/channel-thumbnail";
+
+test("authenticated dashboard shows transcripts before the Manual/Rules playlist manager", () => {
+  const source = readFileSync(new URL("./page.tsx", import.meta.url), "utf8");
+  assert.match(source, /import \{ TranscriptDashboard \} from "@\/components\/transcript-dashboard";/);
+  const authenticatedView = source.slice(source.indexOf('if (!session) {'));
+  const transcript = authenticatedView.indexOf("<TranscriptDashboard />");
+  const manualTab = authenticatedView.indexOf('setTab("manual")');
+  const rulesTab = authenticatedView.indexOf('setTab("rules")');
+  assert.ok(transcript >= 0 && transcript < manualTab && manualTab < rulesTab);
+  assert.match(authenticatedView, /tab === "manual" \? \(/);
+});
 
 test("keeps usable YouTube thumbnails in default, medium, high order without duplicates", () => {
   const candidates = channelThumbnailCandidates({
