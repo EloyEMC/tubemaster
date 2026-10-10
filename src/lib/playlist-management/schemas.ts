@@ -37,6 +37,21 @@ export const playlistListOutputSchema = z
   })
   .strict();
 
+export const playlistItemsInputSchema = z.object({
+  credentialRef: credentialRefSchema,
+  playlistId: z.string().trim().min(1),
+}).strict();
+
+export const playlistItemsOutputSchema = z.object({
+  items: z.array(z.object({
+    playlistItemId: z.string().min(1),
+    videoId: z.string().min(1),
+    title: z.string(),
+    position: z.number().int().nonnegative(),
+    thumbnailUrl: z.string().min(1).optional(),
+  }).strict()),
+}).strict();
+
 export const playlistCreateInputSchema = z
   .object({
     credentialRef: credentialRefSchema,

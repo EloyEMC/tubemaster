@@ -5,6 +5,7 @@ import {
   isDomainError,
   type AddVideosResult,
   type Playlist,
+  type PlaylistItem,
   type PlaylistMutationFailure,
   type PlaylistMutationFailureReason,
   type PlaylistPrivacyStatus,
@@ -22,6 +23,8 @@ import {
   playlistDeleteOutputSchema,
   playlistListInputSchema,
   playlistListOutputSchema,
+  playlistItemsInputSchema,
+  playlistItemsOutputSchema,
   playlistRemoveVideosInputSchema,
   playlistRemoveVideosOutputSchema,
   playlistUpdateInputSchema,
@@ -37,6 +40,7 @@ type ServiceDependencies = {
   };
   youtubeApi: {
     listPlaylists(args: { credentials: ResolvedCredentials }): Promise<Playlist[]>;
+    listPlaylistItems?(args: { credentials: ResolvedCredentials; playlistId: string }): Promise<PlaylistItem[]>;
     createPlaylist(args: {
       credentials: ResolvedCredentials;
       title: string;
@@ -169,6 +173,21 @@ export function createPlaylistManagementServices(deps: ServiceDependencies) {
 
         const playlists = await deps.youtubeApi.listPlaylists({ credentials });
         return parseWithSchema(playlistListOutputSchema, { playlists }, "playlist list output");
+      } catch (error) {
+        throw mapUnknownError(error, "unauthorized");
+      }
+    },
+
+    async listPlaylistItems(input: unknown) {
+      const parsed = parseWithSchema(playlistItemsInputSchema, input, "playlist items input");
+      try {
+        const credentials = await deps.authResolver.resolve({
+          credentialRef: parsed.credentialRef,
+          requiredScopes: [YOUTUBE_READ_SCOPE],
+        });
+        if (!deps.youtubeApi.listPlaylistItems) throw new Error("Playlist items adapter unavailable");
+        const items = await deps.youtubeApi.listPlaylistItems({ credentials, playlistId: parsed.playlistId });
+        return parseWithSchema(playlistItemsOutputSchema, { items }, "playlist items output");
       } catch (error) {
         throw mapUnknownError(error, "unauthorized");
       }

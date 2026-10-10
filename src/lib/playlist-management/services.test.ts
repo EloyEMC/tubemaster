@@ -20,6 +20,7 @@ function createServicesFixture() {
       },
     },
     youtubeApi: {
+      listPlaylistItems: async () => [{ playlistItemId: "pi", videoId: "v", title: "Title", position: 0 }],
       listPlaylists: async () => [
         { id: "p1", title: "Playlist 1", description: "Desc", privacyStatus: "private" },
       ],
@@ -71,6 +72,17 @@ function createServicesFixture() {
 
   return { services, authCalls };
 }
+
+test("listPlaylistItems validates input and requests read scope", async () => {
+  const { services, authCalls } = createServicesFixture();
+  await assert.rejects(services.listPlaylistItems({ credentialRef: { userId: "user-1" }, playlistId: "" }),
+    (error: unknown) => error instanceof DomainError && error.code === "validation_failed");
+  assert.equal(authCalls.length, 0);
+  assert.deepEqual(await services.listPlaylistItems({ credentialRef: { userId: "user-1" }, playlistId: "p" }),
+    { items: [{ playlistItemId: "pi", videoId: "v", title: "Title", position: 0 }] });
+  assert.equal(authCalls.length, 1);
+  assert.equal(authCalls[0].requiredScopes.length, 1);
+});
 
 test("listPlaylists resolves auth and returns stable output", async () => {
   const { services, authCalls } = createServicesFixture();

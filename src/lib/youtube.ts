@@ -425,6 +425,30 @@ export async function addVideoToPlaylistForAuthenticated(
   });
 }
 
+export async function listPlaylistContents(youtube: youtube_v3.Youtube, playlistId: string) {
+  const items: { playlistItemId: string; videoId: string; title: string; position: number; thumbnailUrl?: string }[] = [];
+  let pageToken: string | undefined;
+  do {
+    const response = await youtube.playlistItems.list({
+      part: ["snippet"], playlistId, maxResults: 50, pageToken,
+    });
+    for (const item of response.data.items ?? []) {
+      const snippet = item.snippet;
+      if (!item.id || !snippet?.resourceId?.videoId) continue;
+      const thumbnailUrl = snippet.thumbnails?.default?.url ?? undefined;
+      items.push({
+        playlistItemId: item.id,
+        videoId: snippet.resourceId.videoId,
+        title: snippet.title ?? "",
+        position: snippet.position ?? 0,
+        ...(thumbnailUrl ? { thumbnailUrl } : {}),
+      });
+    }
+    pageToken = response.data.nextPageToken ?? undefined;
+  } while (pageToken);
+  return items;
+}
+
 export async function listPlaylistItemIdsByVideo(
   youtube: youtube_v3.Youtube,
   playlistId: string

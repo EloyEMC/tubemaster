@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   getVideoById,
   listPlaylistItemIdsByVideo,
+  listPlaylistContents,
   listPlaylistsForAuthenticated,
   listVideosByChannel,
 } from "./youtube";
@@ -48,6 +49,23 @@ function makeYoutube(responses: {
     },
   } as never;
 }
+
+test("listPlaylistContents preserves duplicate videos and paginates", async () => {
+  const calls: unknown[] = [];
+  const pages = [
+    { data: { items: [{ id: "pi1", snippet: { resourceId: { videoId: "v" }, title: "First", position: 0, thumbnails: { default: { url: "https://example.com/1" } } } }], nextPageToken: "next" } },
+    { data: { items: [{ id: "pi2", snippet: { resourceId: { videoId: "v" }, title: "Second", position: 1 } }, { snippet: { title: "missing" } }] } },
+  ];
+  const youtube = { playlistItems: { list: async (args: unknown) => { calls.push(args); return pages[calls.length - 1]; } } } as never;
+  assert.deepEqual(await listPlaylistContents(youtube, "playlist"), [
+    { playlistItemId: "pi1", videoId: "v", title: "First", position: 0, thumbnailUrl: "https://example.com/1" },
+    { playlistItemId: "pi2", videoId: "v", title: "Second", position: 1 },
+  ]);
+  assert.deepEqual(calls, [
+    { part: ["snippet"], playlistId: "playlist", maxResults: 50, pageToken: undefined },
+    { part: ["snippet"], playlistId: "playlist", maxResults: 50, pageToken: "next" },
+  ]);
+});
 
 test("getVideoById accounts the attempted videos.list request", async () => {
   const accountant = new InMemoryQuotaAccountant();

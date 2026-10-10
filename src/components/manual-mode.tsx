@@ -10,6 +10,13 @@ type Video = {
 };
 
 type Playlist = { id: string; title: string };
+type PlaylistItem = { playlistItemId: string; videoId: string; title: string; position: number; thumbnailUrl?: string };
+
+export function resolvePlaylistId(input: string): string {
+  const trimmed = input.trim();
+  const match = trimmed.match(/[?&]list=([a-zA-Z0-9_-]+)/);
+  return match ? match[1] : trimmed;
+}
 
 type SubTab = "browse" | "batch";
 type Action = "add" | "remove";
@@ -22,6 +29,32 @@ export function ManualMode() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [playlistId, setPlaylistId] = useState("");
   const [customPlaylist, setCustomPlaylist] = useState("");
+  const [playlistItems, setPlaylistItems] = useState<PlaylistItem[]>([]);
+  const [playlistItemsError, setPlaylistItemsError] = useState<string | null>(null);
+  const [loadingItems, setLoadingItems] = useState(false);
+  const [itemsRevision, setItemsRevision] = useState(0);
+  const targetPlaylist = customPlaylist.trim() ? resolvePlaylistId(customPlaylist) : playlistId;
+
+  useEffect(() => {
+    let active = true;
+    setPlaylistItems([]);
+    setPlaylistItemsError(null);
+    if (!targetPlaylist) {
+      setLoadingItems(false);
+      return () => { active = false; };
+    }
+    setLoadingItems(true);
+    fetch(`/api/youtube/playlist-items?playlistId=${encodeURIComponent(targetPlaylist)}`)
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
+        if (!Array.isArray(data)) throw new Error("Invalid playlist contents response");
+        if (active) setPlaylistItems(data);
+      })
+      .catch((error) => { if (active) setPlaylistItemsError(String(error)); })
+      .finally(() => { if (active) setLoadingItems(false); });
+    return () => { active = false; };
+  }, [targetPlaylist, itemsRevision]);
   const [loading, setLoading] = useState(false);
   const [loadingVideos, setLoadingVideos] = useState(false);
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
@@ -142,19 +175,9 @@ export function ManualMode() {
       .filter(Boolean);
   }
 
-  function resolvePlaylistId(input: string): string {
-    const trimmed = input.trim();
-    const match = trimmed.match(/[?&]list=([a-zA-Z0-9_-]+)/);
-    return match ? match[1] : trimmed;
-  }
-
   async function handleSubmit() {
     const videoIds =
       subTab === "batch" ? parseVideoIds(batchIds) : Array.from(selected);
-
-    const targetPlaylist = customPlaylist.trim()
-      ? resolvePlaylistId(customPlaylist)
-      : playlistId;
 
     if (videoIds.length === 0 || !targetPlaylist) return;
     setLoading(true);
@@ -184,6 +207,7 @@ export function ManualMode() {
         }
         const failures: { videoId: string; reason: string }[] = data.failures ?? [];
         if (failures.length) {
+          setItemsRevision((revision) => revision + 1);
           setResult({ added: data.added, failed: failures.length });
           setError(`Could not add ${failures.length} video(s): ${failures.map((failure) => `${failure.videoId} (${failure.reason})`).join(", ")}.`);
           if (subTab === "browse") {
@@ -195,6 +219,7 @@ export function ManualMode() {
       } else {
         setResult({ removed: data.removed });
       }
+      setItemsRevision((revision) => revision + 1);
       if (subTab === "browse") setSelected(new Set());
       if (subTab === "batch") setBatchIds("");
     } catch {
@@ -362,6 +387,23 @@ export function ManualMode() {
             : `${action === "add" ? "Add" : "Remove"} ${activeCount} video${activeCount !== 1 ? "s" : ""} ${action === "add" ? "to" : "from"} playlist`}
         </button>
       </div>
+
+      {targetPlaylist && (
+        <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-4" aria-label="Current playlist contents">
+          <h3 className="text-sm font-medium">Current playlist contents</h3>
+          {loadingItems ? <p className="text-xs text-zinc-400">Loading playlist contents...</p> :
+            playlistItemsError ? <p role="alert" className="text-xs text-red-400">{playlistItemsError}</p> :
+            playlistItems.length === 0 ? <p className="text-xs text-zinc-400">Playlist is empty.</p> :
+            <ul className="mt-2 max-h-80 overflow-y-auto">
+              {playlistItems.map((item) => (
+                <li key={item.playlistItemId} className="flex items-center gap-3 border-b border-zinc-800 py-2 text-sm">
+                  {item.thumbnailUrl && <img src={item.thumbnailUrl} alt="" className="h-10 w-16 object-cover" />}
+                  <span>{item.position + 1}. {item.title || item.videoId}</span>
+                </li>
+              ))}
+            </ul>}
+        </section>
+      )}
 
       {subTab === "batch" && (
         <div>
