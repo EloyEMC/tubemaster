@@ -49,15 +49,6 @@ export const rules = sqliteTable("rules", {
     .$defaultFn(() => new Date()),
 });
 
-export const transcriptIndexEntries = sqliteTable("transcript_index_entries", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  videoId: text("video_id").notNull(),
-  chunkIndex: integer("chunk_index").notNull(),
-  text: text("text").notNull(),
-  identity: text("identity").notNull(),
-  order: integer("entry_order").notNull(),
-});
-
 async function initializeDatabase() {
   await rawClient.executeMultiple(`
     CREATE TABLE IF NOT EXISTS users (
@@ -96,17 +87,9 @@ async function initializeDatabase() {
     );
     CREATE INDEX IF NOT EXISTS youtube_quota_usage_scope_date_operation_idx
       ON youtube_quota_usage (scope_type, scope_id, bucket_start, operation);
-    -- The channel-aware index is created after the additive migration below.
+    -- channel-aware index is created after the additive migration below
     CREATE INDEX IF NOT EXISTS youtube_quota_usage_operation_id_idx
       ON youtube_quota_usage (operation_id);
-    CREATE TABLE IF NOT EXISTS transcript_index_entries (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      video_id TEXT NOT NULL,
-      chunk_index INTEGER NOT NULL,
-      text TEXT NOT NULL,
-      identity TEXT NOT NULL,
-      entry_order INTEGER NOT NULL
-    );
   `);
 
   // Migration: add quota channel_id if missing (idempotent)
@@ -116,6 +99,7 @@ async function initializeDatabase() {
     // Column already exists
   }
 
+  // Migration: add channel-aware reporting index (idempotent)
   await rawClient.execute(`
     CREATE INDEX IF NOT EXISTS youtube_quota_usage_scope_channel_date_operation_idx
       ON youtube_quota_usage (scope_type, scope_id, channel_id, bucket_start, operation)
@@ -165,7 +149,7 @@ const client = new Proxy(rawClient, {
   },
 });
 
-export const db = drizzle(client, { schema: { users, rules, quotaUsage, transcriptIndexEntries } });
+export const db = drizzle(client, { schema: { users, rules, quotaUsage } });
 
 export type StoredOAuthToken = {
   userId: string;

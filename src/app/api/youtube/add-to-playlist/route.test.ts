@@ -10,7 +10,7 @@ function makeRequest(body: unknown) {
   });
 }
 
-test("add-to-playlist route preserves added counter envelope", async () => {
+test("add-to-playlist route preserves added counter and exposes per-video failures", async () => {
   const handler = createAddToPlaylistPostHandler({
     getSession: async () => ({ user: { id: "user-1" } }),
     core: {
@@ -29,7 +29,11 @@ test("add-to-playlist route preserves added counter envelope", async () => {
   const payload = await response.json();
 
   assert.equal(response.status, 200);
-  assert.deepEqual(payload, { added: 1 });
+  assert.deepEqual(payload, {
+    added: 1,
+    attempted: 2,
+    failures: [{ videoId: "v2", reason: "already-present" }],
+  });
 });
 
 test("add-to-playlist route rejects missing params", async () => {

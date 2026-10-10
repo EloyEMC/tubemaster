@@ -34,8 +34,17 @@ export function createAddToPlaylistPostHandler(
       playlistId,
     });
 
-    return NextResponse.json({ added: result.added });
+    return NextResponse.json({
+      added: result.added,
+      attempted: result.attempted,
+      failures: result.failures,
+    });
   };
 }
 
-export const POST = createAddToPlaylistPostHandler();
+let defaultHandler: ReturnType<typeof createAddToPlaylistPostHandler> | undefined;
+
+export function POST(request: Request) {
+  defaultHandler ??= createAddToPlaylistPostHandler();
+  return defaultHandler(request);
+}

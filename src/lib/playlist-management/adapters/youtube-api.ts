@@ -6,6 +6,7 @@ import {
   deletePlaylistItemById,
   getPlaylistForUpdate as getPlaylistForUpdateFromYoutube,
   listPlaylistItemIdsByVideo,
+  listPlaylistContents,
   listPlaylistsForAuthenticated,
   updatePlaylistForAuthenticated,
 } from "@/lib/youtube";
@@ -30,6 +31,10 @@ export function createPlaylistYoutubeApiAdapter() {
     async listPlaylists(args: { credentials: ResolvedCredentials }): Promise<Playlist[]> {
       const youtube = createAuthorizedClient(args.credentials);
       return listPlaylistsForAuthenticated(youtube);
+    },
+
+    async listPlaylistItems(args: { credentials: ResolvedCredentials; playlistId: string }) {
+      return listPlaylistContents(createAuthorizedClient(args.credentials), args.playlistId);
     },
 
     async createPlaylist(args: {

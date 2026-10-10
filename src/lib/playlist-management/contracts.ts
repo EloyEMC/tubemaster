@@ -23,6 +23,14 @@ export type Playlist = {
   privacyStatus: PlaylistPrivacyStatus;
 };
 
+export type PlaylistItem = {
+  playlistItemId: string;
+  videoId: string;
+  title: string;
+  position: number;
+  thumbnailUrl?: string;
+};
+
 export type PlaylistPrivacyStatus = "private" | "public" | "unlisted";
 
 export type DeletePlaylistResult = {
