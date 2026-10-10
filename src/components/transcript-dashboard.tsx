@@ -4,15 +4,31 @@ import { useState } from "react";
 import { parseVideoId } from "@/lib/video-metadata/parse-video-id";
 
 type Provider = "youtube-captions" | "yt-dlp";
-type Transcript = { status: "available"; text: string; language?: string } | { status: "unavailable"; reason: string } | { status: "unsupported"; reason: string };
+type Transcript =
+  | { status: "available"; text: string; language?: string }
+  | { status: "unavailable"; reason: string; diagnostic?: { stage: string; errorCode?: string; apiReason?: string } }
+  | { status: "unsupported"; reason: string };
+
+const safeStages = new Set(["captions-list", "captions-download", "public-video", "local-transcription"]);
+const safeErrorCodes = new Set(["timeout", "process-error", "non-zero-exit", "malformed-output", "configuration-error"]);
 
 export function transcriptDisplayText(transcript: Transcript | null, error: string | null, loading: boolean) {
   if (loading) return "Loading transcript...";
   if (error) return error;
   if (transcript?.status === "available") return `Available${transcript.language ? ` · ${transcript.language}` : ""}`;
-  if (transcript?.status === "unavailable") return transcript.reason === "no-captions"
-    ? "No captions are available for this video."
-    : "The transcript is currently unavailable.";
+  if (transcript?.status === "unavailable") {
+    const diagnostic = transcript.diagnostic;
+    if (diagnostic?.stage === "local-transcription" && diagnostic.errorCode === "configuration-error") {
+      return "yt-dlp/ffmpeg may be available, but a local Whisper backend (mlx-whisper or faster-whisper) is not configured. Configure one to transcribe this video.";
+    }
+    if (transcript.reason === "no-captions") {
+      return "No captions are available for this video. Try YouTube captions or configure local Whisper (mlx-whisper or faster-whisper).";
+    }
+    const summary = diagnostic && safeStages.has(diagnostic.stage) && diagnostic.errorCode && safeErrorCodes.has(diagnostic.errorCode)
+      ? ` (${diagnostic.stage}: ${diagnostic.errorCode})`
+      : "";
+    return `The transcript is currently unavailable${summary}. Try again or use another transcript provider.`;
+  }
   if (transcript?.status === "unsupported") return "This transcript provider is unsupported.";
   return null;
 }
