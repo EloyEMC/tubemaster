@@ -1,0 +1,6 @@
+# Dashboard playlist read-back tasks
+
+- [x] Add paginated playlist-item read contract and service support
+- [x] Add authenticated playlist-items API route and tests
+- [x] Render and refresh playlist contents in ManualMode
+- [x] Run focused tests and isolated verification (broader service run has SQLite BUSY caveat)
