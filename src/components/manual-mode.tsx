@@ -14,8 +14,15 @@ type PlaylistItem = { playlistItemId: string; videoId: string; title: string; po
 
 export function resolvePlaylistId(input: string): string {
   const trimmed = input.trim();
-  const match = trimmed.match(/[?&]list=([a-zA-Z0-9_-]+)/);
-  return match ? match[1] : trimmed;
+  if (/^[a-zA-Z0-9_-]+$/.test(trimmed)) return trimmed;
+  try {
+    const url = new URL(trimmed);
+    if (!["https:", "http:"].includes(url.protocol)) return "";
+    const id = url.searchParams.get("list") ?? "";
+    return /^[a-zA-Z0-9_-]+$/.test(id) ? id : "";
+  } catch {
+    return "";
+  }
 }
 
 type SubTab = "browse" | "batch";
@@ -46,8 +53,12 @@ export function ManualMode() {
     setLoadingItems(true);
     fetch(`/api/youtube/playlist-items?playlistId=${encodeURIComponent(targetPlaylist)}`)
       .then(async (res) => {
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
+        const data: unknown = await res.json().catch(() => null);
+        if (!res.ok) {
+          const message = data && typeof data === "object" && "error" in data && typeof data.error === "string"
+            ? data.error : `Could not load playlist contents (HTTP ${res.status}).`;
+          throw new Error(message);
+        }
         if (!Array.isArray(data)) throw new Error("Invalid playlist contents response");
         if (active) setPlaylistItems(data);
       })
@@ -231,7 +242,8 @@ export function ManualMode() {
 
   const batchCount = parseVideoIds(batchIds).length;
   const activeCount = subTab === "batch" ? batchCount : selected.size;
-  const hasPlaylist = !!(customPlaylist.trim() || playlistId);
+  const invalidPlaylist = !!customPlaylist.trim() && !resolvePlaylistId(customPlaylist);
+  const hasPlaylist = !!targetPlaylist;
   const allFilteredSelected =
     filteredVideos.length > 0 &&
     filteredVideos.every((v) => selected.has(v.videoId));
@@ -343,8 +355,15 @@ export function ManualMode() {
                 if (e.target.value.trim()) setPlaylistId("");
               }}
               placeholder="https://youtube.com/playlist?list=PL... or PLxxxxx"
+              aria-invalid={invalidPlaylist}
+              aria-describedby={invalidPlaylist ? "playlist-input-error" : undefined}
               className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm placeholder:text-zinc-600"
             />
+            {invalidPlaylist && (
+              <p id="playlist-input-error" role="alert" className="text-xs text-red-400">
+                Enter a playlist ID or URL with list=..., select a playlist above, or use the Batch tab for video URLs.
+              </p>
+            )}
           </>
         )}
 
