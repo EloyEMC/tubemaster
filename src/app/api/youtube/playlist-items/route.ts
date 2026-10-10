@@ -24,4 +24,9 @@ export function createPlaylistItemsGetHandler(deps: Deps = {
   };
 }
 
-export const GET = createPlaylistItemsGetHandler();
+let defaultHandler: ReturnType<typeof createPlaylistItemsGetHandler> | undefined;
+
+export function GET(request: Request) {
+  defaultHandler ??= createPlaylistItemsGetHandler();
+  return defaultHandler(request);
+}

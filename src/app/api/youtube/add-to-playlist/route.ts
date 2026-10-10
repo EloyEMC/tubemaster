@@ -42,4 +42,9 @@ export function createAddToPlaylistPostHandler(
   };
 }
 
-export const POST = createAddToPlaylistPostHandler();
+let defaultHandler: ReturnType<typeof createAddToPlaylistPostHandler> | undefined;
+
+export function POST(request: Request) {
+  defaultHandler ??= createAddToPlaylistPostHandler();
+  return defaultHandler(request);
+}
