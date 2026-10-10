@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 
 type Video = {
   videoId: string;
@@ -11,6 +11,32 @@ type Video = {
 
 type Playlist = { id: string; title: string };
 type PlaylistItem = { playlistItemId: string; videoId: string; title: string; position: number; thumbnailUrl?: string };
+
+export function playlistMatchesMutation(items: PlaylistItem[], videoIds: string[], action: Action): boolean {
+  const present = new Set(items.map((item) => item.videoId));
+  return videoIds.every((id) => action === "add" ? present.has(id) : !present.has(id));
+}
+
+async function fetchPlaylistItems(playlistId: string, revision: number, signal: AbortSignal): Promise<PlaylistItem[]> {
+  const res = await fetch(`/api/youtube/playlist-items?playlistId=${encodeURIComponent(playlistId)}&refresh=${revision}`, {
+    cache: "no-store", signal,
+  });
+  const data: unknown = await res.json().catch(() => null);
+  if (!res.ok) {
+    const message = data && typeof data === "object" && "error" in data && typeof data.error === "string"
+      ? data.error : `Could not load playlist contents (HTTP ${res.status}).`;
+    throw new Error(message);
+  }
+  if (!Array.isArray(data)) throw new Error("Invalid playlist contents response");
+  return data;
+}
+
+function waitForRetry(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, 400);
+    signal.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
+  });
+}
 
 export function resolvePlaylistId(input: string): string {
   const trimmed = input.trim();
@@ -39,33 +65,39 @@ export function ManualMode() {
   const [playlistItems, setPlaylistItems] = useState<PlaylistItem[]>([]);
   const [playlistItemsError, setPlaylistItemsError] = useState<string | null>(null);
   const [loadingItems, setLoadingItems] = useState(false);
-  const [itemsRevision, setItemsRevision] = useState(0);
+  const [readback, setReadback] = useState<{ revision: number; expected?: { ids: string[]; action: Action; playlistId: string } }>({ revision: 0 });
   const targetPlaylist = customPlaylist.trim() ? resolvePlaylistId(customPlaylist) : playlistId;
+  const targetRef = useRef(targetPlaylist);
+  targetRef.current = targetPlaylist;
 
   useEffect(() => {
-    let active = true;
+    const controller = new AbortController();
     setPlaylistItems([]);
     setPlaylistItemsError(null);
     if (!targetPlaylist) {
       setLoadingItems(false);
-      return () => { active = false; };
+      return () => controller.abort();
     }
     setLoadingItems(true);
-    fetch(`/api/youtube/playlist-items?playlistId=${encodeURIComponent(targetPlaylist)}&refresh=${itemsRevision}`, { cache: "no-store" })
-      .then(async (res) => {
-        const data: unknown = await res.json().catch(() => null);
-        if (!res.ok) {
-          const message = data && typeof data === "object" && "error" in data && typeof data.error === "string"
-            ? data.error : `Could not load playlist contents (HTTP ${res.status}).`;
-          throw new Error(message);
+    async function refresh() {
+      try {
+        for (let attempt = 0; attempt < (readback.expected?.playlistId === targetPlaylist && readback.expected.ids.length ? 5 : 1); attempt++) {
+          if (controller.signal.aborted) return;
+          const items = await fetchPlaylistItems(targetPlaylist, readback.revision + attempt, controller.signal);
+          if (controller.signal.aborted) return;
+          setPlaylistItems(items);
+          if (readback.expected?.playlistId !== targetPlaylist || playlistMatchesMutation(items, readback.expected.ids, readback.expected.action)) return;
+          if (attempt < 4) await waitForRetry(controller.signal);
         }
-        if (!Array.isArray(data)) throw new Error("Invalid playlist contents response");
-        if (active) setPlaylistItems(data);
-      })
-      .catch((error) => { if (active) setPlaylistItemsError(String(error)); })
-      .finally(() => { if (active) setLoadingItems(false); });
-    return () => { active = false; };
-  }, [targetPlaylist, itemsRevision]);
+      } catch (error) {
+        if (!controller.signal.aborted) setPlaylistItemsError(String(error));
+      } finally {
+        if (!controller.signal.aborted) setLoadingItems(false);
+      }
+    }
+    void refresh();
+    return () => controller.abort();
+  }, [targetPlaylist, readback]);
   const [loading, setLoading] = useState(false);
   const [loadingVideos, setLoadingVideos] = useState(false);
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
@@ -211,6 +243,7 @@ export function ManualMode() {
         setError(data.error ?? `Could not ${action} videos (HTTP ${res.status}).`);
         return;
       }
+      if (targetRef.current !== targetPlaylist) return;
       if (action === "add") {
         if (typeof data.added !== "number") {
           setError("Could not confirm how many videos were added. Please check the playlist.");
@@ -218,7 +251,9 @@ export function ManualMode() {
         }
         const failures: { videoId: string; reason: string }[] = data.failures ?? [];
         if (failures.length) {
-          setItemsRevision((revision) => revision + 1);
+          const failedIds = new Set(failures.map((failure) => failure.videoId));
+          const succeeded = videoIds.filter((id) => !failedIds.has(id));
+          setReadback((previous) => ({ revision: previous.revision + 1, expected: { ids: succeeded, action, playlistId: targetPlaylist } }));
           setResult({ added: data.added, failed: failures.length });
           setError(`Could not add ${failures.length} video(s): ${failures.map((failure) => `${failure.videoId} (${failure.reason})`).join(", ")}.`);
           if (subTab === "browse") {
@@ -230,7 +265,7 @@ export function ManualMode() {
       } else {
         setResult({ removed: data.removed });
       }
-      setItemsRevision((revision) => revision + 1);
+      setReadback((previous) => ({ revision: previous.revision + 1, expected: { ids: videoIds, action, playlistId: targetPlaylist } }));
       if (subTab === "browse") setSelected(new Set());
       if (subTab === "batch") setBatchIds("");
     } catch {
