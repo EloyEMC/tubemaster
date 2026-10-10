@@ -34,19 +34,6 @@ export function transcriptDisplayText(transcript: Transcript | null, error: stri
   return null;
 }
 
-export function transcriptDisplayText(transcript: Transcript | null, error: string | null, loading: boolean) {
-  if (loading) return "Loading transcript...";
-  if (error) return error;
-  if (transcript?.status === "available") return `Available${transcript.language ? ` · ${transcript.language}` : ""}`;
-  if (transcript?.status === "unavailable") {
-    return transcript.reason === "no-captions"
-      ? "No captions are available for this video."
-      : "The transcript is currently unavailable.";
-  }
-  if (transcript?.status === "unsupported") return "This transcript provider is unsupported.";
-  return null;
-}
-
 function formatTimestamp(seconds: number) {
   const totalSeconds = Math.floor(Math.max(0, seconds));
   const hours = Math.floor(totalSeconds / 3600);
