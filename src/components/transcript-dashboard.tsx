@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { RuntimeCapabilities } from "@/lib/video-metadata/runtime-capabilities";
 import { parseVideoId } from "@/lib/video-metadata/parse-video-id";
 
 type Provider = "youtube-captions" | "yt-dlp";
@@ -33,12 +34,41 @@ export function transcriptDisplayText(transcript: Transcript | null, error: stri
   return null;
 }
 
+export function capabilitySetupMessages(status: RuntimeCapabilities): string[] {
+  const missing: string[] = [];
+  const commands = status.platform === "macos"
+    ? { ytDlp: "brew install yt-dlp", ffmpeg: "brew install ffmpeg", whisper: "python3 -m pip install mlx-whisper" }
+    : status.platform === "windows"
+      ? { ytDlp: "winget install yt-dlp.yt-dlp", ffmpeg: "winget install Gyan.FFmpeg", whisper: "Install a supported mlx_whisper backend on a compatible host." }
+      : status.platform === "linux"
+        ? { ytDlp: "python3 -m pip install yt-dlp", ffmpeg: "sudo apt install ffmpeg", whisper: "Install a supported mlx_whisper backend on a compatible host." }
+        : { ytDlp: "Install yt-dlp on the server PATH.", ffmpeg: "Install ffmpeg on the server PATH.", whisper: "Install a supported mlx_whisper backend on a compatible host." };
+  if (!status.ytDlp) missing.push(`yt-dlp: ${commands.ytDlp}`);
+  if (!status.ffmpeg) missing.push(`ffmpeg: ${commands.ffmpeg}`);
+  if (!status.whisper) missing.push(status.whisperBackend === "unsupported"
+    ? "Whisper: configure the supported mlx_whisper backend."
+    : `Whisper: ${commands.whisper}`);
+  return missing;
+}
+
 export function TranscriptDashboard() {
   const [input, setInput] = useState("");
   const [provider, setProvider] = useState<Provider>("youtube-captions");
   const [transcript, setTranscript] = useState<Transcript | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [capabilities, setCapabilities] = useState<RuntimeCapabilities | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/video-metadata/capabilities", { signal: controller.signal, cache: "no-store" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((data: RuntimeCapabilities | null) => {
+        if (!controller.signal.aborted && data) setCapabilities(data);
+      })
+      .catch(() => { /* Transcript actions remain usable if detection fails. */ });
+    return () => controller.abort();
+  }, []);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -75,6 +105,15 @@ export function TranscriptDashboard() {
     <section className="mb-8 rounded-xl border border-zinc-800 bg-zinc-900 p-4" aria-labelledby="transcript-heading">
       <h2 id="transcript-heading" className="mb-1 text-lg font-semibold">Transcript dashboard</h2>
       <p className="mb-4 text-sm text-zinc-400">Load a transcript using the provider that fits your video.</p>
+      {capabilities && capabilitySetupMessages(capabilities).length > 0 && (
+        <aside aria-label="Transcript setup" className="mb-4 rounded-lg border border-amber-800 p-3 text-sm text-zinc-300">
+          <p className="font-medium">Some local transcript prerequisites are missing on the TubeMaster server.</p>
+          <ul className="mt-2 list-inside list-disc space-y-1">
+            {capabilitySetupMessages(capabilities).map((message) => <li key={message}><code>{message}</code></li>)}
+          </ul>
+          <p className="mt-2">These are manual setup suggestions. TubeMaster will not execute these commands, install software, or download models. YouTube captions may still work.</p>
+        </aside>
+      )}
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label htmlFor="transcript-video" className="mb-1 block text-xs font-medium text-zinc-400">YouTube URL or video ID</label>

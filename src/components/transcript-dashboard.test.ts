@@ -1,6 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { transcriptDisplayText } from "./transcript-dashboard";
+import { capabilitySetupMessages, transcriptDisplayText } from "./transcript-dashboard";
+
+test("guided setup only lists missing tools with platform-safe suggestions", () => {
+  assert.deepEqual(capabilitySetupMessages({ platform: "macos", ytDlp: false, ffmpeg: true, whisper: false, whisperBackend: "mlx_whisper" }), [
+    "yt-dlp: brew install yt-dlp", "Whisper: python3 -m pip install mlx-whisper",
+  ]);
+  assert.deepEqual(capabilitySetupMessages({ platform: "windows", ytDlp: true, ffmpeg: false, whisper: false, whisperBackend: "unsupported" }), [
+    "ffmpeg: winget install Gyan.FFmpeg", "Whisper: configure the supported mlx_whisper backend.",
+  ]);
+  assert.deepEqual(capabilitySetupMessages({ platform: "linux", ytDlp: true, ffmpeg: true, whisper: true, whisperBackend: "mlx_whisper" }), []);
+  assert.deepEqual(capabilitySetupMessages({ platform: "linux", ytDlp: false, ffmpeg: false, whisper: false, whisperBackend: "mlx_whisper" }), [
+    "yt-dlp: python3 -m pip install yt-dlp", "ffmpeg: sudo apt install ffmpeg", "Whisper: Install a supported mlx_whisper backend on a compatible host.",
+  ]);
+});
 
 test("transcript dashboard maps acquisition states to display text", () => {
   assert.equal(transcriptDisplayText({ status: "available", text: "captions", language: "en" }, null, false), "Available · en");
