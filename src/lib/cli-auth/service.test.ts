@@ -324,17 +324,19 @@ test("openBrowserForCliOAuth emits opt-in debug details before spawn", async () 
       logger: (message) => logs.push(message),
     });
 
-    assert.equal(receivedCommand, "rundll32.exe");
-    assert.equal(receivedArgs?.at(-2), "url.dll,FileProtocolHandler");
-    assert.equal(receivedArgs?.at(-1), url);
+    const expected = buildBrowserOpenCommand(url, process.platform);
+    assert.equal(receivedCommand, expected.command);
+    assert.deepEqual(receivedArgs, expected.args);
     const beforeSpawn = JSON.parse(logs[0]);
     assert.equal(beforeSpawn.scope, "cli-oauth-opener");
     assert.equal(beforeSpawn.event, "before-spawn");
-    assert.equal(beforeSpawn.command, "rundll32.exe");
+    assert.equal(beforeSpawn.command, expected.command);
     assert.equal(beforeSpawn.oauthUrl, url);
     assert.equal(beforeSpawn.platform.platform, process.platform);
-    assert.match(beforeSpawn.reproductionCommand, /^rundll32\.exe /);
-    assert.match(beforeSpawn.reproductionCommand, /url\.dll,FileProtocolHandler/);
+    assert.ok(beforeSpawn.reproductionCommand.startsWith(`${expected.command} `));
+    for (const arg of expected.args.slice(0, -1)) {
+      assert.ok(beforeSpawn.reproductionCommand.includes(arg));
+    }
     assert.match(beforeSpawn.reproductionCommand, /https:\/\/accounts\.google\.com/);
     assert.equal(JSON.parse(logs.at(-1) ?? "{}").event, "opener-promise-resolve");
   } finally {
@@ -386,6 +388,25 @@ test("openBrowserForCliOAuth debug logs child process lifecycle events", async (
     } else {
       process.env.CLI_OAUTH_OPENER_DEBUG = originalDebug;
     }
+  }
+});
+
+test("openBrowserForCliOAuth reports asynchronous spawn errors without rejecting manual fallback", async () => {
+  const originalDebug = process.env.CLI_OAUTH_OPENER_DEBUG;
+  delete process.env.CLI_OAUTH_OPENER_DEBUG;
+  const logs: string[] = [];
+  const child = new EventEmitter() as EventEmitter & { unref: () => void };
+  child.unref = () => undefined;
+  try {
+    await openBrowserForCliOAuth("https://example.com/oauth", {
+      spawnProcess: (() => child) as typeof import("node:child_process").spawn,
+      logger: (message) => logs.push(message),
+    });
+    child.emit("error", Object.assign(new Error("opener unavailable"), { code: "ENOENT" }));
+    assert.ok(logs.some((message) => message.includes("opener unavailable")));
+  } finally {
+    if (originalDebug === undefined) delete process.env.CLI_OAUTH_OPENER_DEBUG;
+    else process.env.CLI_OAUTH_OPENER_DEBUG = originalDebug;
   }
 });
 
