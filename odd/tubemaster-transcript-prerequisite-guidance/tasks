@@ -1,0 +1,6 @@
+# Transcript prerequisite guidance tasks
+
+- [ ] Add read-only runtime capability detection
+- [ ] Add authenticated capability route and dashboard guidance
+- [ ] Document platform-specific setup commands
+- [ ] Run focused tests and structural checks
