@@ -251,7 +251,7 @@ export function openBrowserForCliOAuth(
     });
   }
 
-  return new Promise<void>((resolve, reject) => {
+  return new Promise<void>((resolve) => {
     const child = spawnProcess(
       browserOpenCommand.command,
       browserOpenCommand.args,
@@ -262,7 +262,11 @@ export function openBrowserForCliOAuth(
       attachCliOAuthOpenerDebugHandlers({ child, logger });
     }
 
-    child.on("error", reject);
+    child.on("error", (error) => {
+      if (!debugEnabled) {
+        logger(`Could not open OAuth browser automatically: ${error.message}. Use the printed OAuth URL to continue.`);
+      }
+    });
     child.unref();
 
     if (debugEnabled) {
