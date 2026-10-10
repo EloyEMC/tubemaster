@@ -28,23 +28,23 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 
-  --font-size-xs: clamp(0.75rem, 0.7rem + 0.25vw, 0.875rem);
-  --font-size-sm: clamp(0.8rem, 0.74rem + 0.3vw, 0.95rem);
-  --font-size-base: clamp(0.9rem, 0.83rem + 0.35vw, 1.075rem);
-  --font-size-lg: clamp(1.05rem, 0.96rem + 0.45vw, 1.275rem);
-  --font-size-xl: clamp(1.2rem, 1.08rem + 0.6vw, 1.5rem);
-  --font-size-2xl: clamp(1.4rem, 1.24rem + 0.8vw, 1.8rem);
-  --font-size-3xl: clamp(1.75rem, 1.51rem + 1.2vw, 2.35rem);
-  --font-size-4xl: clamp(2.25rem, 1.89rem + 1.8vw, 3.15rem);
+  --text-xs: clamp(0.75rem, 0.7rem + 0.25vw, 0.875rem);
+  --text-sm: clamp(0.8rem, 0.74rem + 0.3vw, 0.95rem);
+  --text-base: clamp(0.9rem, 0.83rem + 0.35vw, 1.075rem);
+  --text-lg: clamp(1.05rem, 0.96rem + 0.45vw, 1.275rem);
+  --text-xl: clamp(1.2rem, 1.08rem + 0.6vw, 1.5rem);
+  --text-2xl: clamp(1.4rem, 1.24rem + 0.8vw, 1.8rem);
+  --text-3xl: clamp(1.75rem, 1.51rem + 1.2vw, 2.35rem);
+  --text-4xl: clamp(2.25rem, 1.89rem + 1.8vw, 3.15rem);
 
-  --line-height-xs: 1rem;
-  --line-height-sm: 1.25rem;
-  --line-height-base: 1.5rem;
-  --line-height-lg: 1.75rem;
-  --line-height-xl: 1.75rem;
-  --line-height-2xl: 2rem;
-  --line-height-3xl: 2.25rem;
-  --line-height-4xl: 2.5rem;
+  --leading-xs: 1rem;
+  --leading-sm: 1.25rem;
+  --leading-base: 1.5rem;
+  --leading-lg: 1.75rem;
+  --leading-xl: 1.75rem;
+  --leading-2xl: 2rem;
+  --leading-3xl: 2.25rem;
+  --leading-4xl: 2.5rem;
 
   --spacing-0: 0px;
   --spacing-1: 8px;

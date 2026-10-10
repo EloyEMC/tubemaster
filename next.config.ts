@@ -1,8 +1,8 @@
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { NextConfig } from "next";
 
-const projectRoot = process.env.NEXT_TURBOPACK_ROOT ?? dirname(fileURLToPath(import.meta.url));
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), process.env.NEXT_TURBOPACK_ROOT ?? ".");
 
 const nextConfig: NextConfig = {
   turbopack: {
