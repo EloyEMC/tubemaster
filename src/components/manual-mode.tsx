@@ -51,7 +51,7 @@ export function ManualMode() {
       return () => { active = false; };
     }
     setLoadingItems(true);
-    fetch(`/api/youtube/playlist-items?playlistId=${encodeURIComponent(targetPlaylist)}`)
+    fetch(`/api/youtube/playlist-items?playlistId=${encodeURIComponent(targetPlaylist)}&refresh=${itemsRevision}`, { cache: "no-store" })
       .then(async (res) => {
         const data: unknown = await res.json().catch(() => null);
         if (!res.ok) {
