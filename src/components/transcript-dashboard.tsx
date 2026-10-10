@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import type { RuntimeCapabilities } from "@/lib/video-metadata/runtime-capabilities";
+import type { TranscriptResult, TranscriptSegment } from "@/lib/video-metadata/contracts";
 import { parseVideoId } from "@/lib/video-metadata/parse-video-id";
 
 type Provider = "youtube-captions" | "yt-dlp";
 type Transcript =
-  | { status: "available"; text: string; language?: string }
+  | { status: "available"; text: string; language?: string; source?: "captions" | "local-whisper"; segments?: TranscriptSegment[] }
   | { status: "unavailable"; reason: string; diagnostic?: { stage: string; errorCode?: string; apiReason?: string } }
   | { status: "unsupported"; reason: string };
 
@@ -32,6 +33,27 @@ export function transcriptDisplayText(transcript: Transcript | null, error: stri
   }
   if (transcript?.status === "unsupported") return "This transcript provider is unsupported.";
   return null;
+}
+
+function formatTimestamp(seconds: number) {
+  const totalSeconds = Math.floor(Math.max(0, seconds));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const remainder = totalSeconds % 60;
+  return hours > 0
+    ? [hours, minutes, remainder].map((value) => String(value).padStart(2, "0")).join(":")
+    : [minutes, remainder].map((value) => String(value).padStart(2, "0")).join(":");
+}
+
+export function formatTranscriptResult(transcript: Extract<TranscriptResult, { status: "available" }>) {
+  const segments = transcript.source === "local-whisper"
+    ? transcript.segments?.filter((segment: TranscriptSegment) => Number.isFinite(segment.start) && segment.start >= 0 && typeof segment.text === "string" && segment.text.trim())
+    : undefined;
+  if (!segments?.length) return transcript.text;
+  return [...segments]
+    .sort((left, right) => left.start - right.start)
+    .map((segment) => `[${formatTimestamp(segment.start)}] ${segment.text.trim()}`)
+    .join("\n");
 }
 
 export function capabilitySetupMessages(status: RuntimeCapabilities): string[] {
@@ -131,7 +153,7 @@ export function TranscriptDashboard() {
         </button>
       </form>
       {error && <p role="alert" aria-live="assertive" className="mt-4 rounded-lg border border-red-900 bg-red-950/50 p-3 text-sm text-red-400">{transcriptDisplayText(transcript, error, loading)}</p>}
-      {transcript?.status === "available" && <div aria-live="polite" className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950 p-3"><p className="mb-2 text-xs text-zinc-500">{transcriptDisplayText(transcript, error, loading)}</p><pre className="max-h-96 overflow-auto whitespace-pre-wrap text-sm text-zinc-200">{transcript.text}</pre></div>}
+      {transcript?.status === "available" && <div aria-live="polite" className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950 p-3"><p className="mb-2 text-xs text-zinc-500">{transcriptDisplayText(transcript, error, loading)}</p><pre className="max-h-96 overflow-auto whitespace-pre-wrap text-sm text-zinc-200">{formatTranscriptResult(transcript as Extract<TranscriptResult, { status: "available" }>)}</pre></div>}
       {transcript?.status === "unavailable" && <p role="status" aria-live="polite" className="mt-4 rounded-lg border border-zinc-800 p-3 text-sm text-zinc-400">{transcriptDisplayText(transcript, error, loading)}</p>}
       {transcript?.status === "unsupported" && <p role="alert" aria-live="assertive" className="mt-4 rounded-lg border border-red-900 bg-red-950/50 p-3 text-sm text-red-400">{transcriptDisplayText(transcript, error, loading)}</p>}
     </section>
