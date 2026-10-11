@@ -11,6 +11,12 @@ function createServicesFixture(
   options: {
     accountant?: InMemoryQuotaAccountant;
     operationIdFactory?: () => string;
+    assertWriteChannel?: () => Promise<{
+      expectedChannelId: string;
+      activeWriteChannel: { id: string; title: string | null };
+      shouldPersistSelection: boolean;
+      userId: string | null;
+    }>;
     logger?: {
       info(payload: { event: string; context?: Record<string, unknown> }): void;
       error(payload: {
@@ -108,12 +114,12 @@ function createServicesFixture(
       deletePlaylistItem: async () => undefined,
     },
     writeContext: {
-      assertWriteChannel: async () => ({
+      assertWriteChannel: options.assertWriteChannel ?? (async () => ({
         expectedChannelId: "UC_ACTIVE",
         activeWriteChannel: { id: "UC_ACTIVE", title: "Active" },
         shouldPersistSelection: true,
         userId: "user-1",
-      }),
+      })),
     },
     channelSelectionStore: {
       setSelectedChannelId: async () => undefined,
@@ -201,6 +207,44 @@ test("playlist operations emit correlated lifecycle events without leaking unsaf
   );
 });
 
+test("playlist write audit retains safe target and typed guardrail failure", async () => {
+  const events: Array<{ event: string; context?: Record<string, unknown> }> = [];
+  const { services } = createServicesFixture({
+    operationIdFactory: () => "playlist-failure",
+    assertWriteChannel: async () => ({
+      expectedChannelId: "UC_OTHER",
+      activeWriteChannel: { id: "UC_OTHER", title: "Other" },
+      shouldPersistSelection: false,
+      userId: "user-1",
+    }),
+    logger: {
+      info: (payload) => events.push(payload),
+      error: (payload) => events.push(payload),
+    },
+  });
+  await assert.rejects(
+    () => services.updatePlaylist({
+      credentialRef: { userId: "user-1" },
+      playlistId: "p1",
+      expectedChannelId: "UC_OTHER",
+      description: "private description",
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof DomainError);
+      assert.equal(error.code, "WRITE_CHANNEL_MISMATCH");
+      assert.deepEqual(error.details, {
+        expectedChannelId: "UC_OTHER",
+        activeWriteChannelId: "UC_ACTIVE",
+      });
+      return true;
+    },
+  );
+  assert.deepEqual(events, [
+    { event: "playlist_management.update.started", context: { operationId: "playlist-failure", playlistId: "p1", expectedChannelId: "UC_OTHER" } },
+    { event: "playlist_management.update.error", context: { operationId: "playlist-failure", playlistId: "p1", expectedChannelId: "UC_OTHER", code: "WRITE_CHANNEL_MISMATCH" } },
+  ]);
+});
+
 test("playlist logger failures do not change output", async () => {
   const { services } = createServicesFixture({
     logger: {
@@ -217,6 +261,36 @@ test("playlist logger failures do not change output", async () => {
     credentialRef: { userId: "user-1" },
   });
   assert.equal(result.playlists.length, 1);
+});
+
+test("playlist failed write preserves typed result despite logger exceptions", async () => {
+  const { services } = createServicesFixture({
+    assertWriteChannel: async () => ({
+      expectedChannelId: "UC_OTHER",
+      activeWriteChannel: { id: "UC_OTHER", title: "Other" },
+      shouldPersistSelection: false,
+      userId: "user-1",
+    }),
+    logger: {
+      info: () => { throw new Error("logger failed"); },
+      error: () => { throw new Error("logger failed"); },
+    },
+  });
+  await assert.rejects(
+    () => services.updatePlaylist({
+      credentialRef: { userId: "user-1" }, playlistId: "p1",
+      expectedChannelId: "UC_OTHER", title: "private title",
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof DomainError);
+      assert.equal(error.code, "WRITE_CHANNEL_MISMATCH");
+      assert.deepEqual(error.details, {
+        expectedChannelId: "UC_OTHER",
+        activeWriteChannelId: "UC_ACTIVE",
+      });
+      return true;
+    },
+  );
 });
 
 test("playlist operations account attempted requests under one operation", async () => {
