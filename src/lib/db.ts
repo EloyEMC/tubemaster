@@ -87,7 +87,7 @@ async function initializeDatabase() {
     );
     CREATE INDEX IF NOT EXISTS youtube_quota_usage_scope_date_operation_idx
       ON youtube_quota_usage (scope_type, scope_id, bucket_start, operation);
-    -- channel-aware index is created after the additive migration below
+    -- Channel-aware index follows the additive migration below.
     CREATE INDEX IF NOT EXISTS youtube_quota_usage_operation_id_idx
       ON youtube_quota_usage (operation_id);
   `);
@@ -99,7 +99,6 @@ async function initializeDatabase() {
     // Column already exists
   }
 
-  // Migration: add channel-aware reporting index (idempotent)
   await rawClient.execute(`
     CREATE INDEX IF NOT EXISTS youtube_quota_usage_scope_channel_date_operation_idx
       ON youtube_quota_usage (scope_type, scope_id, channel_id, bucket_start, operation)

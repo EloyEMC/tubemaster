@@ -1,6 +1,18 @@
 import { z, ZodError } from "zod";
 import { DomainError } from "./contracts";
 
+const transcriptSegmentSchema = z
+  .object({
+    start: z.number().finite().nonnegative(),
+    end: z.number().finite().nonnegative(),
+    text: z.string(),
+  })
+  .strict()
+  .refine((segment) => segment.end >= segment.start, {
+    message: "Segment end must be greater than or equal to start",
+    path: ["end"],
+  });
+
 export const credentialRefSchema = z.union([
   z.object({ userId: z.string().min(1) }).strict(),
   z
@@ -28,6 +40,8 @@ export const transcriptResultSchema = z.discriminatedUnion("status", [
       status: z.literal("available"),
       text: z.string().min(1),
       language: z.string().min(1).optional(),
+      source: z.enum(["captions", "local-whisper"]).optional(),
+      segments: z.array(transcriptSegmentSchema).optional(),
     })
     .strict(),
   z
@@ -43,9 +57,10 @@ export const transcriptResultSchema = z.discriminatedUnion("status", [
       ]),
       diagnostic: z
         .object({
-          stage: z.enum(["captions-list", "captions-download"]),
+          stage: z.enum(["captions-list", "captions-download", "public-video", "local-audio", "local-transcription"]),
           httpStatus: z.number().int().min(100).max(599).optional(),
           apiReason: z.string().min(1).optional(),
+          errorCode: z.enum(["timeout", "process-error", "non-zero-exit", "malformed-output", "configuration-error"]).optional(),
           retriable: z.boolean().optional(),
         })
         .strict()
@@ -84,6 +99,7 @@ export const transcriptInputSchema = z
   .object({
     credentialRef: credentialRefSchema.optional(),
     videoId: z.string().min(1),
+    provider: z.enum(["youtube-captions", "yt-dlp"]).optional(),
   })
   .strict();
 
