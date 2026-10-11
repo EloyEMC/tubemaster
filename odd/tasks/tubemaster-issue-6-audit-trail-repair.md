@@ -27,9 +27,9 @@ Harden the default audit logger's privacy boundary on the clean base. Focused te
 - This task file and its Engram mirror.
 
 ## Tasks
-1. **Harden the issue #6 default audit logger** — in progress. Add focused regression tests first, then implement bounded allow-listed/redacted logger context. Preserve the already-present metadata/transcript and playlist service events. Keep this slice within 400 changed lines; otherwise identify a useful stacked split before expanding scope.
+1. **Harden the issue #6 default audit logger** — done. Commit `4222ff547a6801edc9366b3e31d137a53e307c76` (`fix(audit): redact sensitive structured log context`); this 284-line PR slice preserves both event namespaces and limits context to safe fields.
 2. **Verify behavior, docs, and the 400-line budget** — done. Focused tests, lint, TypeScript check, diff whitespace, and exact PR-visible size were verified; unrelated `.atl` state is excluded and preserved.
-3. **Prepare the clean replacement PR chain** — pending. Commit a reviewable work unit and prepare the PR description with both canonical issue #6 and mirror #23 references. Leave existing PR #2 unchanged; ask before closing or rewriting it.
+3. **Prepare the clean replacement PR chain** — in progress. The clean work-unit commit is ready for native review and a PR description linking canonical issue #6 and mirror #23. Leave existing PR #2 unchanged; ask before closing or rewriting it.
 
 ## TDD evidence and review findings
 - Initial runner attempt was blocked because the new worktree had no `node_modules`; a symlink now points to the existing installed directory, with no package installation.
