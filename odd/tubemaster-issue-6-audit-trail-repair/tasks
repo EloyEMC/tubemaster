@@ -1,11 +1,19 @@
 # Tasks — TubeMaster issue #6 audit-trail repair
 
-Branch: `feat/issue-6-operation-audit`, based on `origin/feature-2` (`4a243e3`). Canonical issue #6; migrated fork mirror #23. Existing fork PR #2 remains untouched until explicitly reconciled.
+Branch: `feat/issue-6-operation-audit`, based on `origin/feature-2` (`4a243e3`). Canonical issue #6; migrated fork mirror #23. Existing PR #2 is a recovery snapshot and remains open until its approved replacement PR is live.
 
-Current finding: focused tests on the clean base confirm metadata/transcript and playlist lifecycle-event behavior already exists. The missing behavior was the default logger leaking `description`, `transcript`, `accessToken`, and provider `message` fields. A review also found the logger accepted only `video_metadata.*` while existing playlist services emit `playlist_management.*`.
+Current finding: the base already has metadata/transcript and playlist lifecycle events. The logger privacy leak and namespace rewrite were fixed. A concise event/retention section has now been added to `docs/interfaces.md`; the final slice needs whitespace and line-budget verification before publication.
 
-- [x] **Harden the issue #6 default audit logger.** Commit `4222ff547a6801edc9366b3e31d137a53e307c76` (`fix(audit): redact sensitive structured log context`); 284 changed lines including issue task records, below the 400-line limit. Both event namespaces remain intact and unsafe context is excluded.
-- [x] **Verify behavior, docs, and the 400-line budget.** Focused tests: 53 passed, 0 failed. `npm run lint`, `node_modules/.bin/tsc --noEmit --incremental false`, and `git diff --check` passed. Runtime harness: N/A (internal stderr logger). Rollback boundary: revert the logger hardening and issue-6 regression/task documentation paths; service behavior remains unchanged. Full suite/build not run.
-- [ ] **Prepare the clean replacement PR chain** — in progress. Candidate is ready for native review and a PR description linking canonical issue #6 and mirror #23. Do not rewrite or close existing PR #2 without explicit confirmation.
+- [x] **Harden the issue #6 default audit logger.** Commit `4222ff547a6801edc9366b3e31d137a53e307c76` (`fix(audit): redact sensitive structured log context`); preserves safe fields and both event namespaces.
+- [x] **Document audit logging and verify the final 400-line budget.** `docs/interfaces.md` documents event namespaces/lifecycle, safe context, stderr output, redaction, and non-persistent retention. `git diff --check` passed; final staged candidate is 297 changed lines.
+- [ ] **Prepare the clean replacement PR chain** — in progress. User authorized creating `status:approved` and `type:bug`, approving fork mirror #23, opening the replacement PR, and closing PR #2 after replacement opens. Both labels were created and #23 approved. Do not change canonical issue #6. The prior 276-line candidate was natively approved and acknowledged; the final documented candidate needs its own native preflight.
 
-PR-visible paths measured 284 changed lines in the committed work unit. A separate 5-line `.atl/skill-registry.md` local modification is preserved and excluded from this commit. No provider, OAuth, or external service was used.
+## TDD and verification evidence
+- RED for logger privacy: 51 passed, 1 failed; the default logger emitted `description`, `transcript`, `accessToken`, and provider `message`.
+- RED for namespace preservation: 1 passed, 1 failed; `playlist_management.update.error` became `video_metadata.unknown`.
+- GREEN focused run: 53 passed, 0 failed. Both namespaces, redaction, and tested service guardrails pass; Node emitted a `module.register()` deprecation warning.
+- `npm run lint` and `node_modules/.bin/tsc --noEmit --incremental false` passed before the docs-only update. `git diff --check` passed after documentation; final staged candidate measures 297 changed lines. Full suite/build were not run.
+- Runtime harness: N/A; internal stderr logger, no UI, HTTP, OAuth, or external provider boundary. Rollback boundary: revert logger hardening and issue-6 regression/task documentation; service behavior remains unchanged.
+- A separate `.atl/skill-registry.md` local modification is preserved and excluded.
+
+No push, replacement PR creation, or PR #2 closure has occurred yet. No upstream issue #6 state has changed.
