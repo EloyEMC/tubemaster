@@ -15,7 +15,7 @@ function makeCredentials(): ResolvedCredentials {
 
 type TranscriptProviderStubs = {
   list: () => Promise<{ data: { items?: Array<{ id?: string; snippet?: { language?: string } }> } }>;
-  download: () => Promise<{ data: ArrayBuffer | Buffer | string }>;
+  download: (args: { id: string; tfmt: "srt" }) => Promise<{ data: ArrayBuffer | Buffer | string }>;
 };
 
 function makeProvider(stubs: TranscriptProviderStubs) {
@@ -27,11 +27,55 @@ function makeProvider(stubs: TranscriptProviderStubs) {
     createYoutubeClient: () => ({
       captions: {
         list: async () => stubs.list(),
-        download: async () => stubs.download(),
+        download: async (args) => stubs.download(args),
       },
     }),
   });
 }
+
+test("transcript provider skips missing ids and downloads only the first valid track", async () => {
+  const downloadedIds: string[] = [];
+  const provider = makeProvider({
+    list: async () => ({ data: { items: [
+      { snippet: { language: "fr" } },
+      { id: "", snippet: { language: "it" } },
+      { id: "first", snippet: { language: "de" } },
+      { id: "second", snippet: { language: "en" } },
+    ] } }),
+    download: async ({ id }) => {
+      downloadedIds.push(id);
+      return { data: "Transcript" };
+    },
+  });
+
+  const result = await provider.getTranscript({ credentials: makeCredentials(), videoId: "video-1" });
+  assert.deepEqual(result, { status: "available", text: "Transcript", language: "de" });
+  assert.deepEqual(downloadedIds, ["first"]);
+});
+
+test("transcript provider omits language when selected track has none", async () => {
+  const provider = makeProvider({
+    list: async () => ({ data: { items: [{ id: "first" }, { id: "second", snippet: { language: "en" } }] } }),
+    download: async () => ({ data: "Transcript" }),
+  });
+  assert.deepEqual(
+    await provider.getTranscript({ credentials: makeCredentials(), videoId: "video-1" }),
+    { status: "available", text: "Transcript" }
+  );
+});
+
+test("transcript provider returns no-captions without downloading when all ids are absent", async () => {
+  let downloads = 0;
+  const provider = makeProvider({
+    list: async () => ({ data: { items: [{}, { id: "" }] } }),
+    download: async () => { downloads += 1; return { data: "unused" }; },
+  });
+  assert.deepEqual(
+    await provider.getTranscript({ credentials: makeCredentials(), videoId: "video-1" }),
+    { status: "unavailable", reason: "no-captions" }
+  );
+  assert.equal(downloads, 0);
+});
 
 test("transcript provider maps empty captions list to no-captions", async () => {
   const provider = makeProvider({

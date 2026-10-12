@@ -254,7 +254,7 @@ export function createTranscriptProvider(deps: TranscriptProviderDeps = {}) {
         return classifyTranscriptError({ stage: "captions-list", error });
       }
 
-      const caption = listRes.data.items?.[0];
+      const caption = listRes.data.items?.find((item) => item.id);
       if (!caption?.id) {
         return {
           status: "unavailable",
@@ -291,7 +291,9 @@ export function createTranscriptProvider(deps: TranscriptProviderDeps = {}) {
       return {
         status: "available",
         text: normalizedText,
-        language: caption.snippet?.language ?? undefined,
+        ...(caption.snippet?.language !== undefined
+          ? { language: caption.snippet.language }
+          : {}),
       };
     },
   };
