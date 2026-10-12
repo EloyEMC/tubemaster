@@ -398,6 +398,57 @@ test("previewMetadata remains enabled when transcript provider is unsupported", 
   assert.equal(result.draft.description, "Final description");
 });
 
+test("batch confirmation is deterministic, ordered and independent of credentials", async () => {
+  const services = createVideoMetadataServices(makeDeps());
+  const input = {
+    credentialRef: { userId: "user-1" },
+    items: [
+      { videoId: "BaBaBaBaBa1", proposedTitle: "First", proposedDescription: "Description 1" },
+      { videoId: "BaBaBaBaBa2", proposedTitle: "Second", proposedDescription: "Description 2" },
+    ],
+    expectedChannelId: "UC1234567890123456789012",
+    confirmed: true,
+  };
+  const first = await services.confirmMetadataBatch(input);
+  assert.deepEqual(first, await services.confirmMetadataBatch({ ...input, credentialRef: { userId: "user-2" } }));
+  assert.deepEqual(first.items, input.items);
+  assert.match(first.confirmationId, /^[a-f0-9]{64}$/);
+  assert.deepEqual(JSON.parse(JSON.stringify(first)), first);
+  assert.notEqual((await services.confirmMetadataBatch({ ...input, items: [...input.items].reverse() })).confirmationId, first.confirmationId);
+  assert.notEqual((await services.confirmMetadataBatch({ ...input, expectedChannelId: "UCabcdefghijklmnopqrstuv" })).confirmationId, first.confirmationId);
+});
+
+test("batch confirmation rejects invalid payloads without touching dependencies", async () => {
+  let calls = 0;
+  const services = createVideoMetadataServices(makeDeps({
+    authResolver: { resolve: async () => { calls++; throw Error("forbidden"); } },
+    youtubeApi: { applyMetadataProposal: async () => { calls++; throw Error("forbidden"); } },
+    writeContext: { assertWriteChannel: async () => { calls++; throw Error("forbidden"); } },
+    channelSelectionStore: { setSelectedChannelId: async () => { calls++; throw Error("forbidden"); } },
+  }));
+  const base = {
+    credentialRef: { userId: "user-1" },
+    items: [{ videoId: "BaBaBaBaBa1", proposedTitle: "Title", proposedDescription: "Description" }],
+    expectedChannelId: "UC1234567890123456789012",
+    confirmed: true,
+  };
+  await services.confirmMetadataBatch(base);
+  for (const invalid of [
+    { ...base, items: [] },
+    { ...base, items: [base.items[0], base.items[0]] },
+    { ...base, items: [{ ...base.items[0], videoId: "invalid" }] },
+    { ...base, items: [{ ...base.items[0], proposedTitle: "  " }] },
+    { ...base, items: [{ ...base.items[0], proposedDescription: "" }] },
+    { ...base, expectedChannelId: "invalid" },
+    { ...base, confirmed: false },
+    { ...base, confirmed: undefined },
+    { ...base, unexpected: true },
+  ]) {
+    await assert.rejects(() => services.confirmMetadataBatch(invalid), { code: "validation_failed" });
+  }
+  assert.equal(calls, 0);
+});
+
 test("batch preview reuses read-only preview in input order with transcript states", async () => {
   const calls: string[] = [];
   const scopes: string[][] = [];
