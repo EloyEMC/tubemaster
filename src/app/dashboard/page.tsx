@@ -8,7 +8,7 @@ import { RuleForm } from "@/components/rule-form";
 import { RuleList } from "@/components/rule-list";
 import { RunButton } from "@/components/run-button";
 import { ManualMode } from "@/components/manual-mode";
-import { nextChannelThumbnail } from "@/components/channel-thumbnail";
+import { nextChannelThumbnail, withProfileImageFallback } from "@/components/channel-thumbnail";
 
 type ChannelInfo = {
   id: string;
@@ -36,7 +36,12 @@ export default function Dashboard() {
   const [tab, setTab] = useState<Tab>("manual");
   const [channel, setChannel] = useState<ChannelInfo | null>(null);
   const [failedThumbnail, setFailedThumbnail] = useState<string | undefined>();
-  const candidates = channel?.thumbnailCandidates ?? (channel?.thumbnail ? [channel.thumbnail] : []);
+  const candidates = channel
+    ? withProfileImageFallback(
+        channel.thumbnailCandidates ?? (channel.thumbnail ? [channel.thumbnail] : []),
+        session?.user?.image,
+      )
+    : [];
   const thumbnail = failedThumbnail === undefined
     ? candidates[0]
     : nextChannelThumbnail(candidates, failedThumbnail);

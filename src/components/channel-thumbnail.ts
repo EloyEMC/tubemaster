@@ -11,6 +11,20 @@ export function channelThumbnailCandidates(thumbnails?: {
   return [...new Set(urls)];
 }
 
+export function withProfileImageFallback(
+  candidates: string[],
+  profileImage: string | null | undefined,
+): string[] {
+  const image = profileImage?.trim();
+  if (!image || candidates.includes(image)) return candidates;
+  try {
+    if (new URL(image).protocol === "https:") return [...candidates, image];
+  } catch {
+    // Ignore malformed profile image URLs.
+  }
+  return candidates;
+}
+
 export function nextChannelThumbnail(candidates: string[], failed: string): string | undefined {
   const index = candidates.indexOf(failed);
   return index < 0 ? candidates[0] : candidates[index + 1];
