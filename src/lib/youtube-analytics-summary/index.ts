@@ -1,5 +1,6 @@
 import { resolveGoogleCredentials } from "../video-metadata/adapters/google-auth";
-import { createDurableQuotaAccountantFactory } from "../quota/accountant";
+import { quotaClient } from "../db";
+import { createDurableQuotaAccountant } from "../quota/accountant";
 import { createYoutubeAnalyticsApi } from "./adapters/youtube-analytics-api";
 import type { AnalyticsSummaryDependencies } from "./contracts";
 import { createYoutubeAnalyticsSummaryService } from "./services";
@@ -20,7 +21,16 @@ export function createYoutubeAnalyticsSummary(
     youtubeAnalyticsApi:
       deps?.youtubeAnalyticsApi ?? createYoutubeAnalyticsApi(),
     quotaAccountantFactory:
-      deps?.quotaAccountantFactory ?? createDurableQuotaAccountantFactory(),
+      deps?.quotaAccountantFactory ??
+      ((credentials) => {
+        if (!("userId" in credentials.credentialRef)) {
+          throw new Error("User-scoped analytics credentials are required");
+        }
+        return createDurableQuotaAccountant({
+          client: quotaClient,
+          scope: { kind: "user", userId: credentials.credentialRef.userId },
+        });
+      }),
   });
   return { fetchAnalyticsSummary: service };
 }
