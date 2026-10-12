@@ -30,6 +30,25 @@ function makeDeps(options: {
   } as unknown as Parameters<typeof createChannelInfoGetHandler>[0];
 }
 
+test("channel info returns ordered candidates and preserves channel metadata", async () => {
+  const response = await createChannelInfoGetHandler(makeDeps({
+    list: async () => ({ data: { items: [{
+      ...channel,
+      snippet: { title: "Channel", thumbnails: {
+        default: { url: "https://example.com/default" },
+        medium: { url: "https://example.com/medium" },
+        high: { url: "https://example.com/high" },
+      } },
+    }] } }),
+  }))();
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { channel: {
+    id: "channel-1", title: "Channel", videoCount: "3",
+    thumbnail: "https://example.com/high",
+    thumbnailCandidates: ["https://example.com/high", "https://example.com/medium", "https://example.com/default"],
+  } });
+});
+
 test("channel info returns unauthorized when session is missing", async () => {
   const response = await createChannelInfoGetHandler(
     makeDeps({ session: null }),
