@@ -2,7 +2,7 @@
 
 ## Status
 
-- State: ready for publication
+- State: published for review
 - Issue: https://github.com/Gentleman-Programming/tubemaster/issues/26
 - Branch: `feat/issue-26-whisper-timestamps`
 - Base: `upstream/feature-2`
@@ -28,7 +28,7 @@ Format local Whisper transcript segments with readable timestamps in the dashboa
 
 - [x] Recover focused Whisper timestamp formatting and tests onto current feature-2; retain plain-text fallback and segment timing contract.
 - [x] Validate focused/full tests, TypeScript, lint, diff check, and build; local browser smoke is not applicable without a local Whisper acquisition provider in this slice.
-- [x] Commit locally; publication follows approved issue workflow.
+- [x] Commit locally and publish a focused PR linked to issue #26.
 
 ## Evidence
 
@@ -37,4 +37,5 @@ Format local Whisper transcript segments with readable timestamps in the dashboa
 - Validation: focused transcript tests 13/13; full suite 271/271; TypeScript, lint, diff check, and build pass; build generated 22/22 static pages.
 - Next.js route-handler and Server/Client Component guides were read before validation.
 - No local Whisper acquisition provider was copied; only rendering and response metadata were recovered, so browser acquisition smoke is not applicable.
-- Work-unit commit: `187fa07` (`feat(transcripts): format local Whisper timestamps`).
+- Work-unit commit: `2be82ae` (`feat(transcripts): format local Whisper timestamps`).
+- Published PR: #60, https://github.com/Gentleman-Programming/tubemaster/pull/60; OPEN/MERGEABLE with `type:feature`; no automated GitHub checks reported.
