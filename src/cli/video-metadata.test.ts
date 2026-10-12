@@ -5,6 +5,25 @@ import type { VideoMetadataCore } from "@/lib/video-metadata";
 import type { PlaylistManagementCore } from "@/lib/playlist-management";
 import { runCliCommand } from "./video-metadata";
 
+test("public transcript CLI forwards provider without resolving OAuth credentials", async () => {
+  let input: unknown;
+  const output: string[] = [];
+  const core = makeCoreStub();
+  core.getTranscript = async (value: unknown) => {
+    input = value;
+    return { transcript: { status: "available", text: "Public" } };
+  };
+  const exit = await runCliCommand({
+    argv: ["transcript", "--videoId", "abcdefghijk", "--provider", "yt-dlp"],
+    core,
+    auth: { resolveEffectiveCredentialRef: async () => { throw new Error("must not resolve"); } } as unknown as NonNullable<Parameters<typeof runCliCommand>[0]["auth"]>,
+    writeStdout: (line) => output.push(line),
+  });
+  assert.equal(exit, 0);
+  assert.deepEqual(input, { videoId: "abcdefghijk", provider: "yt-dlp" });
+  assert.equal(JSON.parse(output[0] ?? "{}").ok, true);
+});
+
 function makeCoreStub(): Pick<
   VideoMetadataCore & PlaylistManagementCore,
   | "listVideos"

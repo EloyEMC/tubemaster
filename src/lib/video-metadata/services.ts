@@ -63,8 +63,9 @@ type ServiceDependencies = {
   };
   transcriptProvider: {
     getTranscript(args: {
-      credentials: ResolvedCredentials;
+      credentials?: ResolvedCredentials;
       videoId: string;
+      provider?: string;
     }): Promise<TranscriptResult>;
   };
   metadataGenerator: {
@@ -265,14 +266,21 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
       const audit = (phase: string, extra: Record<string, unknown> = {}) => emitAuditEvent(deps.logger, `transcript.get.${phase}`, { operationId, videoId: parsedInput.videoId, ...extra });
       audit("start");
       try {
-        const credentials = await deps.authResolver.resolve({
-          credentialRef: parsedInput.credentialRef,
-          requiredScopes: [YOUTUBE_READ_SCOPE],
-        });
+        const selectedProvider = parsedInput.provider ?? process.env.YOUTUBE_TRANSCRIPT_PROVIDER ?? "youtube-captions";
+        if (selectedProvider === "youtube-captions" && !parsedInput.credentialRef) {
+          throw new DomainError({ code: "validation_failed", message: "Transcript credentials are required for youtube-captions" });
+        }
+        const credentials = selectedProvider === "youtube-captions"
+          ? await deps.authResolver.resolve({
+              credentialRef: parsedInput.credentialRef,
+              requiredScopes: [YOUTUBE_READ_SCOPE],
+            })
+          : undefined;
 
         const transcript = await deps.transcriptProvider.getTranscript({
-          credentials,
+          ...(credentials ? { credentials } : {}),
           videoId: parsedInput.videoId,
+          provider: selectedProvider,
         });
 
         const output = parseWithSchema(

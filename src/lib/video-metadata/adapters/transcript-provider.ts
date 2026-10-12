@@ -1,5 +1,6 @@
 import { createGoogleOAuthClient } from "@/lib/auth";
 import { createYoutubeClient } from "@/lib/youtube";
+import { createYtDlpTranscriptProvider } from "./yt-dlp-transcript-provider";
 import type { QuotaAccountant, QuotaOperation } from "../../quota/accountant";
 import type {
   ResolvedCredentials,
@@ -33,6 +34,7 @@ type YoutubeClientLike = {
 
 type TranscriptProviderDeps = {
   provider?: string;
+  createYtDlpProvider?: () => ReturnType<typeof createYtDlpTranscriptProvider>;
   createOAuthClient?: () => OAuthClientLike;
   createYoutubeClient?: (oauth: OAuthClientLike) => YoutubeClientLike;
 };
@@ -212,6 +214,7 @@ function accountTranscript(args: { videoId: string; operationId?: string; quotaA
 
 export function createTranscriptProvider(deps: TranscriptProviderDeps = {}) {
   const provider = deps.provider ?? process.env.YOUTUBE_TRANSCRIPT_PROVIDER ?? "youtube-captions";
+  const publicProvider = (deps.createYtDlpProvider ?? createYtDlpTranscriptProvider)();
   const createOAuthClient =
     deps.createOAuthClient ?? (() => createGoogleOAuthClient() as unknown as OAuthClientLike);
   const createYoutube =
@@ -222,19 +225,23 @@ export function createTranscriptProvider(deps: TranscriptProviderDeps = {}) {
 
   return {
     async getTranscript(args: {
-      credentials: ResolvedCredentials;
+      credentials?: ResolvedCredentials;
+      provider?: string;
       videoId: string;
       operationId?: string;
       quotaAccountant?: QuotaAccountant;
       channelId?: string;
     }): Promise<TranscriptResult> {
-      if (provider !== "youtube-captions") {
+      const selectedProvider = args.provider ?? provider;
+      if (selectedProvider === "yt-dlp") return publicProvider.getTranscript({ videoId: args.videoId });
+      if (selectedProvider !== "youtube-captions") {
         return {
           status: "unsupported",
           reason: "provider-missing",
         };
       }
 
+      if (!args.credentials) return { status: "unsupported", reason: "provider-missing" };
       const oauth2 = createOAuthClient();
       oauth2.setCredentials({
         access_token: args.credentials.accessToken,

@@ -291,9 +291,11 @@ export async function runCliCommand(args: {
     }
 
     const explicitCredentialRef = getCredentialRef(parsedArgs.flags);
-    const credentialRef = await auth.resolveEffectiveCredentialRef({
+    const publicTranscript = parsedArgs.namespace === "metadata" && parsedArgs.command === "transcript" &&
+      (parsedArgs.flags.provider ?? process.env.YOUTUBE_TRANSCRIPT_PROVIDER) === "yt-dlp";
+    const credentialRef = (publicTranscript ? explicitCredentialRef : await auth.resolveEffectiveCredentialRef({
       explicit: explicitCredentialRef ?? undefined,
-    });
+    })) as CredentialRef;
 
     if (parsedArgs.namespace === "playlist") {
       if (parsedArgs.command === "list") {
@@ -404,8 +406,9 @@ export async function runCliCommand(args: {
 
     if (parsedArgs.command === "transcript") {
       const result = await core.getTranscript({
-        credentialRef,
+        ...(!publicTranscript ? { credentialRef } : {}),
         videoId: requiredStringFlag(parsedArgs.flags, "videoId"),
+        ...(parsedArgs.flags.provider !== undefined ? { provider: requiredStringFlag(parsedArgs.flags, "provider") } : {}),
       });
 
       writeStdout(serializeSuccess(result));
