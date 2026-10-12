@@ -136,6 +136,11 @@ const metadataConfirmationItemSchema = z
     videoId: youtubeVideoIdSchema,
     proposedTitle: z.string().trim().min(1),
     proposedDescription: z.string().trim().min(1),
+    baseline: z.object({
+      title: z.string(),
+      description: z.string(),
+      localizations: z.record(z.string(), z.object({ title: z.string(), description: z.string() }).strict()),
+    }).strict(),
   })
   .strict();
 
@@ -165,6 +170,19 @@ export const confirmMetadataBatchOutputSchema = z
     confirmed: z.literal(true),
   })
   .strict();
+
+export const executeMetadataBatchInputSchema = confirmMetadataBatchInputSchema.safeExtend({
+  confirmationId: z.string().regex(/^[a-f0-9]{64}$/),
+});
+
+export const executeMetadataBatchOutputSchema = z.object({
+  confirmationId: z.string().regex(/^[a-f0-9]{64}$/),
+  expectedChannelId: youtubeChannelIdSchema,
+  outcomes: z.array(z.discriminatedUnion("status", [
+    z.object({ videoId: youtubeVideoIdSchema, status: z.literal("success") }).strict(),
+    z.object({ videoId: youtubeVideoIdSchema, status: z.literal("provider-failure"), error: z.object({ code: z.string(), message: z.string() }).strict() }).strict(),
+  ])).min(1),
+}).strict();
 
 export const applyMetadataInputSchema = z
   .object({

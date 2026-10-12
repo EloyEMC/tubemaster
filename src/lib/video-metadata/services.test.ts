@@ -403,8 +403,8 @@ test("batch confirmation is deterministic, ordered and independent of credential
   const input = {
     credentialRef: { userId: "user-1" },
     items: [
-      { videoId: "BaBaBaBaBa1", proposedTitle: "First", proposedDescription: "Description 1" },
-      { videoId: "BaBaBaBaBa2", proposedTitle: "Second", proposedDescription: "Description 2" },
+      { videoId: "BaBaBaBaBa1", proposedTitle: "First", proposedDescription: "Description 1", baseline: { title: "Old", description: "Old description", localizations: {} } },
+      { videoId: "BaBaBaBaBa2", proposedTitle: "Second", proposedDescription: "Description 2", baseline: { title: "Old", description: "Old description", localizations: {} } },
     ],
     expectedChannelId: "UC1234567890123456789012",
     confirmed: true,
@@ -413,6 +413,7 @@ test("batch confirmation is deterministic, ordered and independent of credential
   assert.deepEqual(first, await services.confirmMetadataBatch({ ...input, credentialRef: { userId: "user-2" } }));
   assert.deepEqual(first.items, input.items);
   assert.match(first.confirmationId, /^[a-f0-9]{64}$/);
+  assert.notEqual((await services.confirmMetadataBatch({ ...input, items: [{ ...input.items[0], baseline: { ...input.items[0].baseline, title: "Changed" } }, input.items[1]] })).confirmationId, first.confirmationId);
   assert.deepEqual(JSON.parse(JSON.stringify(first)), first);
   assert.notEqual((await services.confirmMetadataBatch({ ...input, items: [...input.items].reverse() })).confirmationId, first.confirmationId);
   assert.notEqual((await services.confirmMetadataBatch({ ...input, expectedChannelId: "UCabcdefghijklmnopqrstuv" })).confirmationId, first.confirmationId);
@@ -428,7 +429,7 @@ test("batch confirmation rejects invalid payloads without touching dependencies"
   }));
   const base = {
     credentialRef: { userId: "user-1" },
-    items: [{ videoId: "BaBaBaBaBa1", proposedTitle: "Title", proposedDescription: "Description" }],
+    items: [{ videoId: "BaBaBaBaBa1", proposedTitle: "Title", proposedDescription: "Description", baseline: { title: "Old", description: "Old description", localizations: {} } }],
     expectedChannelId: "UC1234567890123456789012",
     confirmed: true,
   };
@@ -447,6 +448,39 @@ test("batch confirmation rejects invalid payloads without touching dependencies"
     await assert.rejects(() => services.confirmMetadataBatch(invalid), { code: "validation_failed" });
   }
   assert.equal(calls, 0);
+});
+
+test("batch execution preflights all items before writing and reports provider failures", async () => {
+  const channel = "UC1234567890123456789012";
+  const ids = ["BaBaBaBaBa1", "BaBaBaBaBa2"];
+  const baseline = { title: "Original", description: "Before", localizations: { es: { title: "Viejo", description: "Antes" } } };
+  const items = ids.map((videoId) => ({ videoId, proposedTitle: "New", proposedDescription: "After", baseline }));
+  const input = { credentialRef: { userId: "user-1" }, items, expectedChannelId: channel, confirmed: true };
+  const events: string[] = [];
+  let stale = false;
+  const services = createVideoMetadataServices(makeDeps({
+    authResolver: { resolve: async ({ requiredScopes }) => { events.push(`auth:${requiredScopes.join(",")}`); return makeCredentials(); } },
+    writeContext: { assertWriteChannel: async () => ({ expectedChannelId: channel, shouldPersistSelection: false, userId: null }) },
+    youtubeApi: {
+      getVideoMetadataContext: async ({ videoId }) => {
+        events.push(`read:${videoId}`);
+        return { snippet: { title: stale && videoId === ids[1] ? "Drift" : baseline.title, description: baseline.description, channelId: channel, defaultLanguage: "es" }, localizations: baseline.localizations };
+      },
+      applyMetadataProposal: async ({ proposal }) => { events.push(`write:${proposal.update.videoId}`); if (proposal.update.videoId === ids[1]) throw Error("provider unavailable"); },
+    },
+  }));
+  const confirmed = await services.confirmMetadataBatch(input);
+  await assert.rejects(() => services.executeMetadataBatch({ ...input, confirmationId: "0".repeat(64) }), { code: "validation_failed" });
+  assert.equal(events.length, 0);
+  stale = true;
+  await assert.rejects(() => services.executeMetadataBatch({ ...input, confirmationId: confirmed.confirmationId }), { code: "validation_failed" });
+  assert.equal(events.some((event) => event.startsWith("write:")), false);
+  events.length = 0;
+  stale = false;
+  const result = await services.executeMetadataBatch({ ...input, confirmationId: confirmed.confirmationId });
+  assert.deepEqual(events.slice(1), [`read:${ids[0]}`, `read:${ids[1]}`, `write:${ids[0]}`, `write:${ids[1]}`]);
+  assert.deepEqual(result.outcomes.map((item) => item.status), ["success", "provider-failure"]);
+  assert.equal(result.outcomes[1]?.status === "provider-failure" && result.outcomes[1].error.code, "update_failed");
 });
 
 test("batch preview reuses read-only preview in input order with transcript states", async () => {
