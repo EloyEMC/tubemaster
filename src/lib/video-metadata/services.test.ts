@@ -7,6 +7,7 @@ import type {
   VideoMetadataItem,
 } from "./contracts";
 import { DomainError } from "./contracts";
+import { YOUTUBE_READ_SCOPE } from "@/lib/auth";
 import { createVideoMetadataServices, type ServiceDependencies } from "./services";
 
 function makeCredentials(): ResolvedCredentials {
@@ -395,6 +396,64 @@ test("previewMetadata remains enabled when transcript provider is unsupported", 
   assert.equal(receivedTranscriptStatus, "unsupported");
   assert.equal(result.transcript.status, "unsupported");
   assert.equal(result.draft.description, "Final description");
+});
+
+test("batch preview reuses read-only preview in input order with transcript states", async () => {
+  const calls: string[] = [];
+  const scopes: string[][] = [];
+  const services = createVideoMetadataServices(makeDeps({
+    authResolver: { resolve: async ({ requiredScopes }) => {
+      scopes.push([...requiredScopes]);
+      return makeCredentials();
+    } },
+    youtubeApi: {
+      getVideo: async ({ videoId }) => {
+        calls.push(`video:${videoId}`);
+        return { ...makeVideo(), videoId };
+      },
+      applyMetadataProposal: async () => { throw Error("write forbidden"); },
+    },
+    transcriptProvider: { getTranscript: async ({ videoId }) => {
+      calls.push(`transcript:${videoId}`);
+      return videoId === "BaBaBaBaBa1"
+        ? { status: "unavailable", reason: "no-captions" }
+        : { status: "unsupported", reason: "provider-missing" };
+    } },
+    metadataGenerator: { generate: async ({ video }) => {
+      calls.push(`draft:${video.videoId}`);
+      return makeDraft();
+    } },
+    writeContext: { assertWriteChannel: async () => { throw Error("write forbidden"); } },
+    channelSelectionStore: { setSelectedChannelId: async () => { throw Error("write forbidden"); } },
+  }));
+  const result = await services.previewMetadataBatch({
+    credentialRef: { userId: "user-1" },
+    videoIds: ["BaBaBaBaBa1", "BaBaBaBaBa2"],
+    editorialPrompt: "Make it clear",
+  });
+  assert.deepEqual(scopes, [[YOUTUBE_READ_SCOPE], [YOUTUBE_READ_SCOPE]]);
+  assert.deepEqual(calls, [
+    "video:BaBaBaBaBa1", "transcript:BaBaBaBaBa1", "draft:BaBaBaBaBa1",
+    "video:BaBaBaBaBa2", "transcript:BaBaBaBaBa2", "draft:BaBaBaBaBa2",
+  ]);
+  assert.deepEqual(result.items.map((item) => item.transcript.status), ["unavailable", "unsupported"]);
+});
+
+test("batch preview rejects malformed input before adapter calls", async () => {
+  let calls = 0;
+  const services = createVideoMetadataServices(makeDeps({
+    authResolver: { resolve: async () => { calls++; return makeCredentials(); } },
+  }));
+  for (const videoIds of [[], ["BaBaBaBaBa1", "BaBaBaBaBa1"], ["invalid"],
+    Array.from({ length: 51 }, (_, i) => `BaBaBaBa${String(i).padStart(3, "0")}`)]) {
+    await assert.rejects(() => services.previewMetadataBatch({
+      credentialRef: { userId: "user-1" }, videoIds, editorialPrompt: "prompt",
+    }), { code: "validation_failed" });
+  }
+  await assert.rejects(() => services.previewMetadataBatch({
+    credentialRef: { userId: "user-1" }, videoIds: ["BaBaBaBaBa1"], editorialPrompt: "   ",
+  }), { code: "validation_failed" });
+  assert.equal(calls, 0);
 });
 
 test("applyMetadata dryRun and apply share the exact same proposed payload", async () => {

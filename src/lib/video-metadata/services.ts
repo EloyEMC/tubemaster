@@ -21,6 +21,8 @@ import {
   listVideosOutputSchema,
   metadataDraftSchema,
   parseWithSchema,
+  previewMetadataBatchInputSchema,
+  previewMetadataBatchOutputSchema,
   previewMetadataInputSchema,
   previewMetadataOutputSchema,
   transcriptInputSchema,
@@ -319,6 +321,27 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
         audit("failure", { code: mapped.code });
         throw mapped;
       }
+    },
+
+    async previewMetadataBatch(input: unknown) {
+      const parsedInput = parseWithSchema(
+        previewMetadataBatchInputSchema,
+        input,
+        "batch preview metadata input"
+      );
+      const items = [];
+      for (const videoId of parsedInput.videoIds) {
+        items.push(await this.previewMetadata({
+          credentialRef: parsedInput.credentialRef,
+          videoId,
+          editorialPrompt: parsedInput.editorialPrompt,
+        }));
+      }
+      return parseWithSchema(
+        previewMetadataBatchOutputSchema,
+        { items },
+        "batch preview metadata output"
+      );
     },
 
     async applyMetadata(input: unknown): Promise<MetadataApplyResult> {
