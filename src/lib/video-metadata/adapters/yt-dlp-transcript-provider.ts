@@ -1,4 +1,7 @@
 import { spawn } from "node:child_process";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { TranscriptResult } from "../contracts";
 
 type RunResult = { exitCode: number | null; stdout: string; stderr: string };
@@ -66,23 +69,35 @@ export function createYtDlpTranscriptProvider(deps: Dependencies = {}) {
       let malformed = false;
       for (const language of languages) {
         for (const automatic of [false, true]) {
-          let result: RunResult;
+          let directory: string | undefined;
           try {
-            result = await run([
+            directory = await mkdtemp(join(tmpdir(), "tubemaster-subs-"));
+            const result = await run([
               "--skip-download", "--no-warnings", automatic ? "--write-auto-subs" : "--write-subs",
-              "--sub-langs", language, "--sub-format", "vtt/srt", "--output", "-",
+              "--sub-langs", language, "--sub-format", "vtt/srt", "--output", join(directory, "subtitle"),
               `https://www.youtube.com/watch?v=${videoId}`,
             ], deps.timeoutMs ?? 15_000);
+            if (result.exitCode !== 0) {
+              absent ||= /no subtitles|subtitles? (are )?not available|requested format is not available/i.test(result.stderr);
+              continue;
+            }
+            let payload = result.stdout;
+            if (!normalizeCaptions(payload)) {
+              const files = (await readdir(directory)).filter((name) => /^subtitle(?:\..+)?\.(?:vtt|srt)$/i.test(name));
+              const selected = files.find((name) => name.endsWith(".vtt")) ?? files[0];
+              if (selected) payload = await readFile(join(directory, selected), "utf8");
+            }
+            const text = normalizeCaptions(payload);
+            if (text) return { status: "available", text, language };
+            malformed = true;
           } catch (error) {
             return failure(error instanceof Error && (error as Error & { code?: string }).code === "ETIMEDOUT" ? "timeout" : "process-error", true);
+          } finally {
+            if (directory) {
+              try { await rm(directory, { recursive: true, force: true }); }
+              catch { return failure("process-error", true); }
+            }
           }
-          if (result.exitCode !== 0) {
-            absent ||= /no subtitles|subtitles? (are )?not available|requested format is not available/i.test(result.stderr);
-            continue;
-          }
-          const text = normalizeCaptions(result.stdout);
-          if (text) return { status: "available", text, language };
-          malformed = true;
         }
       }
       if (absent) return { status: "unavailable", reason: "no-captions" };
