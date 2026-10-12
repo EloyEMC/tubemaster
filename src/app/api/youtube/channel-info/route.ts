@@ -10,6 +10,7 @@ import {
 import { DomainError } from "@/lib/video-metadata/contracts";
 import { getVideoMetadataErrorStatus } from "@/app/api/video-metadata/error-status";
 import { getAuthenticatedYoutube } from "@/lib/youtube";
+import { channelThumbnailCandidates } from "@/components/channel-thumbnail";
 
 type ChannelInfoRouteDeps = {
   getSession: () => Promise<{ user?: { id?: string | null } } | null>;
@@ -64,11 +65,13 @@ export function createChannelInfoGetHandler(
         return NextResponse.json({ channel: null });
       }
 
+      const thumbnailCandidates = channelThumbnailCandidates(channel.snippet?.thumbnails);
       return NextResponse.json({
         channel: {
           id: channel.id,
           title: channel.snippet?.title,
-          thumbnail: channel.snippet?.thumbnails?.default?.url,
+          thumbnail: thumbnailCandidates[0],
+          thumbnailCandidates,
           videoCount: channel.statistics?.videoCount,
         },
       });

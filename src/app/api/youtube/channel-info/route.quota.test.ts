@@ -4,7 +4,7 @@ import { createChannelInfoGetHandler } from "./route";
 
 const channel = {
   id: "channel-1",
-  snippet: { title: "Channel", thumbnails: { default: { url: "thumb" } } },
+  snippet: { title: "Channel", thumbnails: { default: { url: "https://example.com/thumb" } } },
   statistics: { videoCount: "3" },
 };
 
@@ -42,7 +42,8 @@ test("channel info accounts a successful channels.list request", async () => {
     channel: {
       id: "channel-1",
       title: "Channel",
-      thumbnail: "thumb",
+      thumbnail: "https://example.com/thumb",
+      thumbnailCandidates: ["https://example.com/thumb"],
       videoCount: "3",
     },
   });

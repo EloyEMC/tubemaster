@@ -8,11 +8,13 @@ import { RuleForm } from "@/components/rule-form";
 import { RuleList } from "@/components/rule-list";
 import { RunButton } from "@/components/run-button";
 import { ManualMode } from "@/components/manual-mode";
+import { nextChannelThumbnail } from "@/components/channel-thumbnail";
 
 type ChannelInfo = {
   id: string;
   title: string;
   thumbnail?: string;
+  thumbnailCandidates?: string[];
   videoCount?: string;
 };
 
@@ -33,6 +35,11 @@ export default function Dashboard() {
   const [rules, setRules] = useState<Rule[]>([]);
   const [tab, setTab] = useState<Tab>("manual");
   const [channel, setChannel] = useState<ChannelInfo | null>(null);
+  const [failedThumbnail, setFailedThumbnail] = useState<string | undefined>();
+  const candidates = channel?.thumbnailCandidates ?? (channel?.thumbnail ? [channel.thumbnail] : []);
+  const thumbnail = failedThumbnail === undefined
+    ? candidates[0]
+    : nextChannelThumbnail(candidates, failedThumbnail);
 
   const fetchRules = useCallback(async () => {
     const res = await fetch("/api/rules");
@@ -43,6 +50,7 @@ export default function Dashboard() {
   const fetchChannel = useCallback(async () => {
     const res = await fetch("/api/youtube/channel-info");
     const data = await res.json();
+    setFailedThumbnail(undefined);
     setChannel(data.channel);
   }, []);
 
@@ -96,11 +104,12 @@ export default function Dashboard() {
 
       <div className="mb-6 flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
         <div className="flex items-center gap-3">
-          {channel?.thumbnail && (
+          {thumbnail && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={channel.thumbnail}
-              alt={channel.title}
+              src={thumbnail}
+              onError={() => setFailedThumbnail(thumbnail)}
+              alt={channel?.title ?? "Channel"}
               className="h-10 w-10 rounded-full"
             />
           )}
