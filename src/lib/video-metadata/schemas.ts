@@ -22,12 +22,23 @@ export const videoMetadataItemSchema = z
   })
   .strict();
 
+const transcriptSegmentSchema = z.object({
+  start: z.number().finite().nonnegative(),
+  end: z.number().finite().nonnegative(),
+  text: z.string(),
+}).strict().refine((segment) => segment.end >= segment.start, {
+  message: "Segment end must be greater than or equal to start",
+  path: ["end"],
+});
+
 export const transcriptResultSchema = z.discriminatedUnion("status", [
   z
     .object({
       status: z.literal("available"),
       text: z.string().min(1),
       language: z.string().min(1).optional(),
+      source: z.enum(["captions", "local-whisper"]).optional(),
+      segments: z.array(transcriptSegmentSchema).optional(),
     })
     .strict(),
   z
