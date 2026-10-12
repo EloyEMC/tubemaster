@@ -18,6 +18,10 @@ type ChannelInfo = {
   videoCount?: string;
 };
 
+type ChannelState =
+  | { status: "loading" | "empty" | "error" }
+  | { status: "ready"; channel: ChannelInfo };
+
 type Rule = {
   id: number;
   name: string;
@@ -34,7 +38,8 @@ export default function Dashboard() {
   const { data: session, status } = useSession();
   const [rules, setRules] = useState<Rule[]>([]);
   const [tab, setTab] = useState<Tab>("manual");
-  const [channel, setChannel] = useState<ChannelInfo | null>(null);
+  const [channelState, setChannelState] = useState<ChannelState>({ status: "loading" });
+  const channel = channelState.status === "ready" ? channelState.channel : null;
   const [failedThumbnail, setFailedThumbnail] = useState<string | undefined>();
   const candidates = channel
     ? withProfileImageFallback(
@@ -53,10 +58,18 @@ export default function Dashboard() {
   }, []);
 
   const fetchChannel = useCallback(async () => {
-    const res = await fetch("/api/youtube/channel-info");
-    const data = await res.json();
+    setChannelState({ status: "loading" });
     setFailedThumbnail(undefined);
-    setChannel(data.channel);
+    try {
+      const res = await fetch("/api/youtube/channel-info");
+      if (!res.ok) throw new Error("Channel request failed");
+      const data: { channel: ChannelInfo | null } = await res.json();
+      setChannelState(data.channel
+        ? { status: "ready", channel: data.channel }
+        : { status: "empty" });
+    } catch {
+      setChannelState({ status: "error" });
+    }
   }, []);
 
   useEffect(() => {
@@ -121,7 +134,11 @@ export default function Dashboard() {
           <div>
             <p className="text-xs text-zinc-500">Active YouTube channel</p>
             <p className="font-medium">
-              {channel?.title ?? "Loading..."}
+              {channel?.title ?? (channelState.status === "loading"
+                ? "Loading..."
+                : channelState.status === "empty"
+                  ? "No channel found"
+                  : "Unable to load channel")}
               {channel?.videoCount && (
                 <span className="ml-2 text-xs text-zinc-500">
                   {channel.videoCount} videos
