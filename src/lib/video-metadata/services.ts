@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { emitAuditEvent } from "./adapters/logger";
 import { YOUTUBE_READ_SCOPE, YOUTUBE_WRITE_SCOPE } from "@/lib/auth";
 import type { QuotaAccountant } from "../quota/accountant";
@@ -17,6 +17,8 @@ import {
 import {
   applyMetadataInputSchema,
   applyMetadataOutputSchema,
+  confirmMetadataBatchInputSchema,
+  confirmMetadataBatchOutputSchema,
   listVideosInputSchema,
   listVideosOutputSchema,
   metadataDraftSchema,
@@ -341,6 +343,29 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
         previewMetadataBatchOutputSchema,
         { items },
         "batch preview metadata output"
+      );
+    },
+
+    async confirmMetadataBatch(input: unknown) {
+      const parsedInput = parseWithSchema(
+        confirmMetadataBatchInputSchema,
+        input,
+        "batch metadata confirmation input"
+      );
+      // The identity excludes credentials and uses schema-defined key ordering.
+      const canonicalPayload = {
+        items: parsedInput.items,
+        expectedChannelId: parsedInput.expectedChannelId,
+        confirmed: parsedInput.confirmed,
+      };
+      const confirmationId = createHash("sha256")
+        .update(JSON.stringify(canonicalPayload))
+        .digest("hex");
+
+      return parseWithSchema(
+        confirmMetadataBatchOutputSchema,
+        { ...canonicalPayload, confirmationId },
+        "batch metadata confirmation output"
       );
     },
 
