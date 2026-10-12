@@ -8,6 +8,7 @@ import { RuleForm } from "@/components/rule-form";
 import { RuleList } from "@/components/rule-list";
 import { RunButton } from "@/components/run-button";
 import { ManualMode } from "@/components/manual-mode";
+import { TranscriptDashboard } from "@/components/transcript-dashboard";
 import { nextChannelThumbnail, withProfileImageFallback } from "@/components/channel-thumbnail";
 
 type ChannelInfo = {
@@ -158,6 +159,8 @@ export default function Dashboard() {
       <Link href="/dashboard/quota" className="mb-6 inline-block text-sm text-zinc-400 underline hover:text-zinc-200">
         View quota usage
       </Link>
+
+      <TranscriptDashboard />
 
       <div className="mb-6 flex gap-1 rounded-lg bg-zinc-900 p-1">
         <button

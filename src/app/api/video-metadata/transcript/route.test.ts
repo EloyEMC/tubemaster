@@ -46,6 +46,24 @@ test("transcript route returns transcript payload on happy path", async () => {
   });
 });
 
+test("transcript route forwards an explicitly selected provider", async () => {
+  for (const provider of ["youtube-captions", "yt-dlp"] as const) {
+    let received: unknown;
+    const handler = createTranscriptPostHandler({
+      getSession: async () => ({ user: { id: "user-1" } }),
+      core: {
+        getTranscript: async (input) => {
+          received = input;
+          return { transcript: { status: "available", text: "transcript" } };
+        },
+      },
+    });
+    const response = await handler(makeRequest({ videoId: "video-1", provider }));
+    assert.equal(response.status, 200);
+    assert.deepEqual(received, { videoId: "video-1", provider, credentialRef: { userId: "user-1" } });
+  }
+});
+
 test("transcript route keeps unavailable diagnostic contract unchanged", async () => {
   const handler = createTranscriptPostHandler({
     getSession: async () => ({ user: { id: "user-1" } }),
