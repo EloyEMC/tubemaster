@@ -3,6 +3,17 @@ import test from "node:test";
 import type { ResolvedCredentials } from "../contracts";
 import { createTranscriptProvider } from "./transcript-provider";
 
+test("explicit public provider bypasses OAuth and unknown providers fail closed", async () => {
+  let calls = 0;
+  const provider = createTranscriptProvider({
+    createOAuthClient: () => { throw new Error("OAuth must not run"); },
+    createYtDlpProvider: () => ({ getTranscript: async () => { calls += 1; return { status: "available", text: "Public" }; } }),
+  });
+  assert.deepEqual(await provider.getTranscript({ videoId: "abcdefghijk", provider: "yt-dlp" }), { status: "available", text: "Public" });
+  assert.deepEqual(await provider.getTranscript({ videoId: "abcdefghijk", provider: "invalid" }), { status: "unsupported", reason: "provider-missing" });
+  assert.equal(calls, 1);
+});
+
 function makeCredentials(): ResolvedCredentials {
   return {
     credentialRef: { userId: "user-1" },

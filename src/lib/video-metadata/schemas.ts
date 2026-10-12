@@ -43,7 +43,8 @@ export const transcriptResultSchema = z.discriminatedUnion("status", [
       ]),
       diagnostic: z
         .object({
-          stage: z.enum(["captions-list", "captions-download"]),
+          stage: z.enum(["captions-list", "captions-download", "public-video"]),
+          errorCode: z.enum(["timeout", "process-error", "non-zero-exit", "malformed-output"]).optional(),
           httpStatus: z.number().int().min(100).max(599).optional(),
           apiReason: z.string().min(1).optional(),
           retriable: z.boolean().optional(),
@@ -82,8 +83,9 @@ export const listVideosOutputSchema = z.object({
 
 export const transcriptInputSchema = z
   .object({
-    credentialRef: credentialRefSchema,
+    credentialRef: credentialRefSchema.optional(),
     videoId: z.string().min(1),
+    provider: z.string().min(1).optional(),
   })
   .strict();
 

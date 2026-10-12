@@ -60,12 +60,13 @@ export type VideoMetadataItem = {
   publishedAt: string;
 };
 
-export type TranscriptDiagnosticStage = "captions-list" | "captions-download";
+export type TranscriptDiagnosticStage = "captions-list" | "captions-download" | "public-video";
 
 export type TranscriptDiagnostic = {
   stage: TranscriptDiagnosticStage;
   httpStatus?: number;
   apiReason?: string;
+  errorCode?: "timeout" | "process-error" | "non-zero-exit" | "malformed-output";
   retriable?: boolean;
 };
 

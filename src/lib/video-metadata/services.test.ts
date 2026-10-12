@@ -113,6 +113,17 @@ function makeDeps(overrides?: ServiceDependencyOverrides): ServiceDependencies {
   };
 }
 
+test("explicit public transcript skips credential resolution and carries provider through core", async () => {
+  let received: unknown;
+  const deps = makeDeps({
+    authResolver: { resolve: async () => { throw new Error("OAuth must not run"); } },
+    transcriptProvider: { getTranscript: async (args) => { received = args; return { status: "available", text: "Public" }; } },
+  });
+  const result = await createVideoMetadataServices(deps).getTranscript({ videoId: "abcdefghijk", provider: "yt-dlp" });
+  assert.deepEqual(result, { transcript: { status: "available", text: "Public" } });
+  assert.deepEqual(received, { videoId: "abcdefghijk", provider: "yt-dlp" });
+});
+
 test("audit orders start then dry_run or failure without exposing editorial content", async () => {
   const events: Array<{ event: string; context?: Record<string, unknown> }> = [];
   const deps = makeDeps({ operationIdFactory: () => "op-1", logger: { info: (event) => events.push(event), error: (event) => events.push(event) } });
