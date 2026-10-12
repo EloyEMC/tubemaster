@@ -12,7 +12,7 @@ function makeRequest(body: unknown) {
 }
 
 const payload = {
-  items: [{ videoId: "BaBaBaBaBa1", proposedTitle: "Title", proposedDescription: "Description" }],
+  items: [{ videoId: "BaBaBaBaBa1", proposedTitle: "Title", proposedDescription: "Description", baseline: { title: "Original", description: "Original description", localizations: {} } }],
   expectedChannelId: "UC1234567890123456789012",
   confirmed: true as const,
 };

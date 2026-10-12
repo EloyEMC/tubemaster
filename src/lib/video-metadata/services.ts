@@ -19,6 +19,8 @@ import {
   applyMetadataOutputSchema,
   confirmMetadataBatchInputSchema,
   confirmMetadataBatchOutputSchema,
+  executeMetadataBatchInputSchema,
+  executeMetadataBatchOutputSchema,
   listVideosInputSchema,
   listVideosOutputSchema,
   metadataDraftSchema,
@@ -206,6 +208,20 @@ function buildMetadataSyncProposal(args: {
   };
 }
 
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, entry]) => [key, canonicalize(entry)]));
+  }
+  return value;
+}
+
+function confirmationIdFor(input: { items: unknown; expectedChannelId: string; confirmed: true }) {
+  return createHash("sha256").update(JSON.stringify(canonicalize({
+    items: input.items, expectedChannelId: input.expectedChannelId, confirmed: input.confirmed,
+  }))).digest("hex");
+}
+
 export function createVideoMetadataServices(deps: ServiceDependencies) {
   return {
     async listVideos(input: unknown) {
@@ -358,15 +374,63 @@ export function createVideoMetadataServices(deps: ServiceDependencies) {
         expectedChannelId: parsedInput.expectedChannelId,
         confirmed: parsedInput.confirmed,
       };
-      const confirmationId = createHash("sha256")
-        .update(JSON.stringify(canonicalPayload))
-        .digest("hex");
+      const confirmationId = confirmationIdFor(canonicalPayload);
 
       return parseWithSchema(
         confirmMetadataBatchOutputSchema,
         { ...canonicalPayload, confirmationId },
         "batch metadata confirmation output"
       );
+    },
+
+    async executeMetadataBatch(input: unknown) {
+      const parsed = parseWithSchema(executeMetadataBatchInputSchema, input, "batch metadata execution input");
+      if (confirmationIdFor(parsed) !== parsed.confirmationId) {
+        throw new DomainError({ code: "validation_failed", message: "Confirmation envelope does not match confirmationId" });
+      }
+      let credentials: ResolvedCredentials;
+      try {
+        credentials = await deps.authResolver.resolve({ credentialRef: parsed.credentialRef, requiredScopes: [YOUTUBE_WRITE_SCOPE] });
+      } catch (error) {
+        throw mapUnknownError(error, "unauthorized");
+      }
+      try {
+        const guardrail = await deps.writeContext.assertWriteChannel({
+          credentialRef: parsed.credentialRef, credentials, expectedChannelId: parsed.expectedChannelId,
+        });
+        const proposals: MetadataSyncProposal[] = [];
+        for (const item of parsed.items) {
+          const context = await deps.youtubeApi.getVideoMetadataContext({ credentials, videoId: item.videoId });
+          if (context.snippet.channelId !== parsed.expectedChannelId) {
+            throw new DomainError({ code: "WRITE_CHANNEL_MISMATCH", message: "Video does not belong to the expected write channel", details: { videoId: item.videoId } });
+          }
+          const baseline = { title: context.snippet.title, description: context.snippet.description, localizations: context.localizations };
+          if (JSON.stringify(canonicalize(baseline)) !== JSON.stringify(canonicalize(item.baseline))) {
+            throw new DomainError({ code: "validation_failed", message: "Confirmed metadata is stale", details: { videoId: item.videoId } });
+          }
+          proposals.push(buildMetadataSyncProposal({ videoId: item.videoId, context, draft: {
+            finalTitle: item.proposedTitle, description: item.proposedDescription, promptVersion: "confirmed-batch",
+          } }));
+        }
+        const outcomes: Array<{ videoId: string; status: "success" } | { videoId: string; status: "provider-failure"; error: { code: string; message: string } }> = [];
+        for (const proposal of proposals) {
+          try {
+            await deps.youtubeApi.applyMetadataProposal({ credentials, proposal });
+            outcomes.push({ videoId: proposal.update.videoId, status: "success" });
+          } catch (error) {
+            const mapped = mapUnknownError(error, "update_failed");
+            outcomes.push({ videoId: proposal.update.videoId, status: "provider-failure", error: { code: mapped.code, message: mapped.message } });
+          }
+        }
+        if (guardrail.shouldPersistSelection && guardrail.userId) {
+          await deps.channelSelectionStore.setSelectedChannelId(guardrail.userId, guardrail.expectedChannelId);
+        }
+        return parseWithSchema(executeMetadataBatchOutputSchema, {
+          confirmationId: parsed.confirmationId, expectedChannelId: parsed.expectedChannelId, outcomes,
+        }, "batch metadata execution output");
+      } catch (error) {
+        throw mapUnknownError(error, "update_failed");
+      }
     },
 
     async applyMetadata(input: unknown): Promise<MetadataApplyResult> {
