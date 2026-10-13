@@ -78,8 +78,10 @@ export type TranscriptUnavailableReason =
   | "api-error"
   | "unknown";
 
+export type TranscriptSegment = { start: number; end: number; text: string };
+
 export type TranscriptResult =
-  | { status: "available"; text: string; language?: string }
+  | { status: "available"; text: string; language?: string; source?: "captions" | "local-whisper"; segments?: TranscriptSegment[] }
   | {
       status: "unavailable";
       reason: TranscriptUnavailableReason;

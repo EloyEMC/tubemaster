@@ -46,6 +46,22 @@ test("transcript route returns transcript payload on happy path", async () => {
   });
 });
 
+test("transcript route preserves local Whisper segment timing alongside plain text", async () => {
+  const transcript = {
+    status: "available" as const,
+    text: "first second",
+    source: "local-whisper" as const,
+    segments: [{ start: 2, end: 3, text: "second" }, { start: 0, end: 1, text: "first" }],
+  };
+  const handler = createTranscriptPostHandler({
+    getSession: async () => ({ user: { id: "user-1" } }),
+    core: { getTranscript: async () => ({ transcript }) },
+  });
+  const response = await handler(makeRequest({ videoId: "video-1" }));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { transcript });
+});
+
 test("transcript route forwards an explicitly selected provider", async () => {
   for (const provider of ["youtube-captions", "yt-dlp"] as const) {
     let received: unknown;

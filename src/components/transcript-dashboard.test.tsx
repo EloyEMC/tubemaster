@@ -31,7 +31,7 @@ test("shows loading, transcript language, no captions and unsupported states", (
   assert.equal(transcriptDisplayText(null, null, true), "Loading transcript...");
   assert.equal(transcriptDisplayText({ status: "available", text: "hello", language: "en" }, null, false), "Available · en");
   assert.equal(transcriptDisplayText({ status: "unavailable", reason: "no-captions" }, null, false), "No captions are available for this video.");
-  assert.equal(transcriptDisplayText({ status: "unsupported", reason: "unsupported-provider" }, null, false), "This transcript provider is unsupported.");
+  assert.equal(transcriptDisplayText({ status: "unsupported", reason: "provider-missing" }, null, false), "This transcript provider is unsupported.");
 });
 
 test("distinguishes auth from generic API and network failures", async () => {

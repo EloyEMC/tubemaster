@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { formatTranscriptResult } from "./transcript-dashboard-format";
+import type { TranscriptResult } from "@/lib/video-metadata/contracts";
 
 type Provider = "youtube-captions" | "yt-dlp";
-type Transcript =
-  | { status: "available"; text: string; language?: string }
-  | { status: "unavailable"; reason: string }
-  | { status: "unsupported"; reason: string };
+type Transcript = TranscriptResult;
 
 export function normalizeVideoId(input: string): string | null {
   const value = input.trim();
@@ -101,7 +100,7 @@ export function TranscriptDashboard() {
       </form>
       <div aria-live="polite" aria-busy={loading}>
         {error && <p role="alert" className="mt-4 rounded-lg border border-red-900 bg-red-950/50 p-3 text-sm text-red-400">{error}</p>}
-        {transcript?.status === "available" && <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950 p-3"><p className="mb-2 text-xs text-zinc-500">{transcriptDisplayText(transcript, null, false)}</p><pre className="max-h-96 overflow-auto whitespace-pre-wrap text-sm text-zinc-200">{transcript.text}</pre></div>}
+        {transcript?.status === "available" && <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950 p-3"><p className="mb-2 text-xs text-zinc-500">{transcriptDisplayText(transcript, null, false)}</p><pre className="max-h-96 overflow-auto whitespace-pre-wrap text-sm text-zinc-200">{formatTranscriptResult(transcript)}</pre></div>}
         {transcript?.status === "unavailable" && <p role="status" className="mt-4 rounded-lg border border-zinc-800 p-3 text-sm text-zinc-400">{transcriptDisplayText(transcript, null, false)}</p>}
         {transcript?.status === "unsupported" && <p role="alert" className="mt-4 rounded-lg border border-red-900 bg-red-950/50 p-3 text-sm text-red-400">{transcriptDisplayText(transcript, null, false)}</p>}
       </div>
