@@ -2,7 +2,7 @@
 
 ## Status
 
-- State: ready for publication
+- State: published for review
 - Issue: https://github.com/Gentleman-Programming/tubemaster/issues/5
 - Branch: `feat/issue-5-product-positioning`
 - Base: `upstream/feature-2` at `50f8b9b`
@@ -31,4 +31,13 @@ Align the README, getting-started guide, and interface documentation with TubeMa
 - [x] Validate links, content consistency, and diff checks: 26/26 relative references valid, 5/5 anchors valid, and no consistency discrepancies remain.
 - [x] Correct the publication blocker in docs only: add CLI playlist mutation confirmation and expected-channel flags, identify stderr for CLI errors, match add/remove partial-result fields, and distinguish existing analytics API/local export from roadmap reporting. Revalidate the corrected docs before publication.
 - [x] Document the final analytics scope blocker: core OAuth defaults omit `yt-analytics.readonly`; the optional analytics summary API requires that scope in the authenticated grant, and existing users must re-authenticate after adding it to the authorization request. No OAuth code changed.
-- [ ] Commit and publish a focused PR linked to issue #5.
+- [x] Commit and publish a focused PR linked to issue #5.
+
+## Validation evidence
+
+- `git diff --check`: passed.
+- Link audit: 26/26 relative references valid, including 5 anchors.
+- Source consistency audit: current workflows, CLI contracts, analytics scope behavior, and roadmap boundaries match implementation.
+- No runtime files changed; `.atl/skill-registry.md` remains unrelated and untouched.
+- Work-unit commit: `4d54d48` (`docs(product): align channel operations positioning`).
+- Published PR: #61, https://github.com/Gentleman-Programming/tubemaster/pull/61; OPEN/MERGEABLE with `type:feature`; issue #5 remains open; no automated checks reported.
