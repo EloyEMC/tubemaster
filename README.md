@@ -1,8 +1,8 @@
-# TubeMaster — YouTube Channel Operations Manager
+# TubeMaster — YouTube Channel Operations Workspace
 
 ![TubeMaster banner](docs/assets/tubemaster-banner.png)
 
-TubeMaster helps you **authenticate once and safely operate a YouTube channel end-to-end**: videos, metadata, transcripts, playlists, rules, and agent integrations via **Web UI, CLI, MCP, or API Route Handlers**.
+TubeMaster is a **channel-operations workspace** spanning Web UI, CLI, MCP, and API surfaces. It supports channel context, video browsing and selection/export, playlist operations, rules, metadata preview and guarded apply, transcript acquisition, quota visibility, and observational audit events. Each interface exposes a different subset; see [interface boundaries](docs/interfaces.md).
 
 <p>
   <img src="docs/assets/tubemaster.png" alt="TubeMaster logo" width="140" />
@@ -26,14 +26,18 @@ Full walkthrough: **[docs/getting-started.md](docs/getting-started.md)**
 
 ## Interfaces
 
-| Interface | Entry point | Best for |
+| Interface | Entry point | Current scope |
 | --- | --- | --- |
-| Web UI | `http://localhost:3000` | Visual channel operations: videos, playlists, and rules |
-| CLI | `npm run cli:video-metadata -- <command>` | Local automation, scripts, manual ops |
-| MCP Server (stdio) | `npm run mcp:video-metadata` | Agent/tool integrations |
-| API Route Handlers | `/api/youtube/videos`, `/api/video-metadata/*` | App/backend integrations |
+| Web UI | `http://localhost:3000` | Browse/select/export videos, playlist actions, rules, estimated quota usage |
+| CLI | `npm run cli:video-metadata -- <command>` | Auth/channel context, metadata and transcript workflows, playlists; quota has a separate command |
+| MCP Server (stdio) | `npm run mcp:video-metadata` | Context, metadata, transcripts, playlists; no login or registered quota tool |
+| API Route Handlers | `/api/youtube/videos`, `/api/video-metadata/*` | Session-authenticated UI operations, metadata/transcripts, estimated quota usage |
 
 Detailed usage by interface: **[docs/interfaces.md](docs/interfaces.md)**
+
+## Roadmap boundary
+
+An authenticated analytics summary API (`GET /api/youtube/analytics`) and local selected-video JSON/CSV export already exist. The optional analytics API requires an OAuth grant with `https://www.googleapis.com/auth/yt-analytics.readonly`, which default core login scopes omit; existing users must re-authenticate after adding it to the authorization request. See [analytics setup](docs/getting-started.md#13-configure-oauth-consent-screen). Expanded analytics/reporting, future metadata/transcript improvements, and search are separate roadmap increments—not capabilities promised in one release. TubeMaster does not autonomously publish content.
 
 ## Operation audit events
 
@@ -51,9 +55,9 @@ npm run lint
 
 ```bash
 # Playlist operations
-npm run cli:video-metadata -- playlist create --title "Roadtrip 2026" --description "Videos del viaje" --expectedChannelId <CHANNEL_ID> --privacyStatus unlisted
-npm run cli:video-metadata -- playlist update --playlistId <PLAYLIST_ID> --expectedChannelId <CHANNEL_ID> --description "Nueva descripción"
-npm run cli:video-metadata -- playlist add --playlistId <PLAYLIST_ID> --videoIds <VIDEO_ID_1>,<VIDEO_ID_2>
+npm run cli:video-metadata -- playlist create --title "Roadtrip 2026" --description "Videos del viaje" --expectedChannelId <CHANNEL_ID> --confirmed --privacyStatus unlisted
+npm run cli:video-metadata -- playlist update --playlistId <PLAYLIST_ID> --expectedChannelId <CHANNEL_ID> --confirmed --description "Nueva descripción"
+npm run cli:video-metadata -- playlist add --playlistId <PLAYLIST_ID> --videoIds <VIDEO_ID_1>,<VIDEO_ID_2> --expectedChannelId <CHANNEL_ID> --confirmed
 
 # Metadata operations
 npm run cli:video-metadata -- transcript --videoId <VIDEO_ID>
@@ -84,7 +88,7 @@ See full env setup + Google credentials mapping: **[docs/getting-started.md#2-lo
 - **Stable JSON envelopes** across CLI/MCP/core with typed errors and non-zero exit status on failures.
 - **Strict credential precedence**: explicit `credentialRef` → active local context (`data/auth-context.json`) → typed auth error.
 - **Fail-closed write operations** (`apply`, `playlist_create`, `playlist_update`, `playlist_delete`) requiring `expectedChannelId`.
-- **Safe playlist partial results** for add/remove operations (`attempted`/`added` + `failures[]`).
+- **Safe playlist partial results**: add returns `attempted`/`added` + `failures[]`; remove returns `requested`/`removed` + `failures[]`.
 - **Transcript compatibility contract** with stable `status` and additive diagnostics.
 
 Troubleshooting these guardrails and auth errors: **[docs/troubleshooting.md](docs/troubleshooting.md)**

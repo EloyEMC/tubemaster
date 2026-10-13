@@ -2,7 +2,20 @@
 
 <- [Back to README](../README.md)
 
-Use this as the operational reference after setup: TubeMaster covers channel workflows across metadata, transcripts, playlists, rules, and automation surfaces.
+TubeMaster is a channel-operations workspace across Web UI, CLI, MCP, and API surfaces. Use this reference after [setup](./getting-started.md) to choose the wired interface for each workflow; capabilities are not identical across surfaces.
+
+| Workflow | Wired surface |
+| --- | --- |
+| Channel context | CLI auth selection; MCP context tools; authenticated API channel info |
+| Video browsing, selection, export | Web UI browse/select and local JSON/CSV export; CLI metadata list and MCP list; API video routes |
+| Playlists | Web UI actions; CLI and MCP list/create/update/delete/add/remove; selected UI API routes |
+| Rules | Web UI create/list/delete/run; `/api/rules` and `/api/run` |
+| Metadata preview/apply, transcript acquisition | CLI, MCP, and metadata API; apply requires expected channel and supports dry run |
+| Analytics summary | Authenticated `GET /api/youtube/analytics` with required date range; selected-video JSON/CSV export is local to the Web UI |
+| Quota visibility | Web UI, separate quota CLI, and quota API; MCP quota handler is not registered |
+| Operation audit events | Best-effort metadata, transcript, and playlist service logs; not a queryable audit store |
+
+Expanded analytics/reporting and future metadata, transcript, and search increments are separate roadmap work, not one-release commitments. No autonomous publishing is wired.
 
 ## Operation audit events
 
@@ -37,7 +50,7 @@ The default metadata logger streams JSON lines to stderr. Playlist events are em
 
 ## CLI (`npm run cli:video-metadata -- ...`)
 
-CLI prints JSON envelopes on stdout (`{ ok: true|false, ... }`) and uses non-zero exit on failure.
+CLI prints success JSON envelopes on stdout (`{ ok: true, data }`) and error JSON envelopes on stderr (`{ ok: false, error }`), with non-zero exit on failure.
 
 ### Auth commands
 
@@ -66,11 +79,11 @@ npm run cli:video-metadata -- apply --videoId <VIDEO_ID> --finalTitle "..." --de
 
 ```bash
 npm run cli:video-metadata -- playlist list [--userId <USER_ID>]
-npm run cli:video-metadata -- playlist create --title "..." --expectedChannelId <UC...> [--description "..."] [--privacyStatus private|public|unlisted] [--userId <USER_ID>]
-npm run cli:video-metadata -- playlist update --playlistId <PLAYLIST_ID> --expectedChannelId <UC...> [--title "..."] [--description "..."] [--privacyStatus private|public|unlisted] [--userId <USER_ID>]
-npm run cli:video-metadata -- playlist delete --playlistId <PLAYLIST_ID> --expectedChannelId <UC...> [--userId <USER_ID>]
-npm run cli:video-metadata -- playlist add --playlistId <PLAYLIST_ID> --videoIds <VIDEO1,VIDEO2,...> [--userId <USER_ID>]
-npm run cli:video-metadata -- playlist remove --playlistId <PLAYLIST_ID> --videoIds <VIDEO1,VIDEO2,...> [--userId <USER_ID>]
+npm run cli:video-metadata -- playlist create --title "..." --expectedChannelId <UC...> --confirmed [--description "..."] [--privacyStatus private|public|unlisted] [--userId <USER_ID>]
+npm run cli:video-metadata -- playlist update --playlistId <PLAYLIST_ID> --expectedChannelId <UC...> --confirmed [--title "..."] [--description "..."] [--privacyStatus private|public|unlisted] [--userId <USER_ID>]
+npm run cli:video-metadata -- playlist delete --playlistId <PLAYLIST_ID> --expectedChannelId <UC...> --confirmed [--userId <USER_ID>]
+npm run cli:video-metadata -- playlist add --playlistId <PLAYLIST_ID> --videoIds <VIDEO1,VIDEO2,...> --expectedChannelId <UC...> --confirmed [--userId <USER_ID>]
+npm run cli:video-metadata -- playlist remove --playlistId <PLAYLIST_ID> --videoIds <VIDEO1,VIDEO2,...> --expectedChannelId <UC...> --confirmed [--userId <USER_ID>]
 ```
 
 ### Standalone quota reporting (not wired into the video-metadata CLI)
@@ -117,6 +130,11 @@ All routes are App Router handlers and require authenticated session user.
   - body: `{ "videoId": "...", "editorialPrompt": "..." }`
 - `POST /api/video-metadata/apply`
   - body: `{ "videoId": "...", "finalTitle": "...", "description": "...", "expectedChannelId": "UC...", "dryRun": true|false }`
+
+### Analytics summary API
+
+- `GET /api/youtube/analytics?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD`
+  - Requires an authenticated session, a valid date range, and an OAuth grant containing `https://www.googleapis.com/auth/yt-analytics.readonly`. This optional analytics scope is not requested by the default core login scopes; without it the route returns `AUTH_SCOPE_INSUFFICIENT` (403). Add the scope to the authorization request and re-authenticate existing users to grant it. This is distinct from the Web UI's local selected-video export and does not imply expanded reporting is available.
 
 ### Quota usage API
 

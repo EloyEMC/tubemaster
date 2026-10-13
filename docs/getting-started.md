@@ -2,7 +2,18 @@
 
 <- [Back to README](../README.md)
 
-This guide gets you from a fresh machine to a working TubeMaster setup for **Web UI + CLI + MCP** channel operations.
+TubeMaster is a channel-operations workspace spanning **Web UI, CLI, MCP, and API** surfaces. This guide gets you from a fresh machine to a working local setup; each interface exposes a different subset of channel workflows.
+
+## What you can do now
+
+| Surface | First workflows |
+| --- | --- |
+| Web UI | Browse, select, and export loaded videos; manage playlists and rules; view estimated quota usage |
+| CLI | Set channel context; list videos, acquire transcripts, preview or guarded-apply metadata, and manage playlists |
+| MCP | Use context, metadata, transcript, and playlist tools after CLI login; no MCP login or registered quota tool |
+| API | Use authenticated route handlers for video/playlist/rule workflows, metadata/transcripts, and quota estimates |
+
+See [interface details](./interfaces.md) for exact commands and boundaries. Audit events are best-effort service logs, not an audit database. An authenticated analytics summary API and local selected-video JSON/CSV export already exist. Expanded analytics/reporting and future metadata, transcript, and search increments remain roadmap work; there is no autonomous publishing or one-release promise.
 
 ## Prerequisites
 
@@ -37,8 +48,7 @@ TubeMaster uses Google OAuth + YouTube Data API v3. You must configure both.
    - `https://www.googleapis.com/auth/youtube`
    - `https://www.googleapis.com/auth/youtube.force-ssl`
 
-> These scopes are enforced by the app (`src/lib/auth.ts`).
-> If you add a new scope to an existing OAuth client, previously authorized users must re-authenticate to grant it.
+> These are the default core scopes requested by the app (`src/lib/auth.ts`). The optional analytics summary API additionally requires `https://www.googleapis.com/auth/yt-analytics.readonly` in the authenticated user's OAuth grant; the default login scopes do not request it. To use analytics, add this scope to the consent configuration and OAuth authorization request, then authenticate again. Existing users must re-authenticate after adding the scope; updating the consent screen alone does not upgrade their grants. Core setup does not require analytics access.
 
 ### 1.4 Create OAuth client credentials
 
@@ -156,7 +166,7 @@ When `--dryRun` is present, TubeMaster returns the proposed metadata without cal
 ## Common setup pitfalls
 
 - **OAuth redirect mismatch** → verify both redirect URIs exactly.
-- **Scope-related errors** (`AUTH_SCOPE_INSUFFICIENT`) → include all TubeMaster YouTube scopes (`youtube.readonly`, `youtube`, `youtube.force-ssl`) in consent/client, then revoke or logout and re-auth.
+- **Scope-related errors** (`AUTH_SCOPE_INSUFFICIENT`) → for core workflows, check the default YouTube scopes (`youtube.readonly`, `youtube`, `youtube.force-ssl`) and re-authenticate. For the optional analytics summary API, the authenticated grant must also include `https://www.googleapis.com/auth/yt-analytics.readonly`; add it to the authorization request and re-authenticate existing users.
 - **No active auth context** (`AUTH_USER_NOT_FOUND`) → run `auth login` and retry.
 - **Write guardrail failures** (`WRITE_CHANNEL_*`) → set/select expected channel and ensure OAuth account matches it.
 
