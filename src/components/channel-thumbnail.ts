@@ -4,9 +4,12 @@ export function channelThumbnailCandidates(thumbnails?: {
   default?: Thumbnail;
   medium?: Thumbnail;
   high?: Thumbnail;
+  standard?: Thumbnail;
+  maxres?: Thumbnail;
 } | null): string[] {
-  const urls = [thumbnails?.high, thumbnails?.medium, thumbnails?.default]
+  const urls = [thumbnails?.maxres, thumbnails?.standard, thumbnails?.high, thumbnails?.medium, thumbnails?.default]
     .map((thumbnail) => thumbnail?.url?.trim())
+    .map((url) => url?.startsWith("//") ? `https:${url}` : url)
     .filter((url): url is string => !!url && /^https?:\/\//i.test(url));
   return [...new Set(urls)];
 }
