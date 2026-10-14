@@ -1,0 +1,63 @@
+name: Feature request
+description: Propose a focused TubeMaster capability or improvement
+title: "feat: "
+labels:
+  - type:feature
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the capability and the user problem it solves.
+    validations:
+      required: true
+
+  - type: textarea
+    id: user-need
+    attributes:
+      label: User need
+      description: Explain who needs this, the current limitation, and the expected outcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: List the smallest in-scope behavior and explicitly state important out-of-scope behavior.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Provide observable, testable conditions for considering the feature complete.
+    validations:
+      required: true
+
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation plan
+      description: Describe the tests, checks, or manual verification needed to validate the change.
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and risks
+      description: Identify related issues, API or compatibility constraints, rollout risks, and recovery considerations.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: verification
+    attributes:
+      label: Verification
+      options:
+        - label: I checked that no existing issue covers this feature.
+          required: true
+        - label: I removed credentials and other secrets from this proposal.
+          required: true
