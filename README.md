@@ -95,6 +95,7 @@ Troubleshooting these guardrails and auth errors: **[docs/troubleshooting.md](do
 
 ## Documentation
 
+- **Roadmap and future Shorts proposal:** [docs/roadmap.md](docs/roadmap.md)
 - **Getting started (Google Cloud + local setup):** [docs/getting-started.md](docs/getting-started.md)
 - **Web UI, CLI, MCP, API usage:** [docs/interfaces.md](docs/interfaces.md)
 - **Common auth/API/env errors and fixes:** [docs/troubleshooting.md](docs/troubleshooting.md)
