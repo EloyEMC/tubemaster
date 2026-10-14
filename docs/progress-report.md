@@ -1,6 +1,6 @@
 # TubeMaster progress report
 
-**Status (feature-2 `0d9acc7`):** Roadmap PR [#63](https://github.com/Gentleman-Programming/tubemaster/pull/63) is merged and the [roadmap](./roadmap.md) is versioned. The current product has guarded channel operations, reporting and transcript foundations—not Shorts upload or scheduling. This report is documentation, not approval to ship a new capability.
+**Status (feature-2 `d3a9a3f`):** Roadmap PR [#63](https://github.com/Gentleman-Programming/tubemaster/pull/63) and this report's PR [#64](https://github.com/Gentleman-Programming/tubemaster/pull/64) are merged; the [roadmap](./roadmap.md) and this report are versioned. The current product has guarded channel operations, reporting and transcript foundations—not Shorts upload or scheduling. This report is documentation, not approval to ship a new capability.
 
 ## Executive summary
 
@@ -19,7 +19,7 @@ Task records report full suites of **268/268** for #24, **271/271** for #26, and
 
 ## GitHub state and roadmap
 
-At this head, PR #63 is merged. The only open issue is [#3](https://github.com/Gentleman-Programming/tubemaster/issues/3), with no type label or approval; stale [PR #2](https://github.com/Gentleman-Programming/tubemaster/pull/2) and [PR #4](https://github.com/Gentleman-Programming/tubemaster/pull/4) remain open. No approved issue is currently queued.
+At this head, PR #63 and PR #64 are merged. The only open issue is [#3](https://github.com/Gentleman-Programming/tubemaster/issues/3), with no type label or approval; stale [PR #2](https://github.com/Gentleman-Programming/tubemaster/pull/2) and [PR #4](https://github.com/Gentleman-Programming/tubemaster/pull/4) remain open. No approved issue is currently queued.
 
 The [six-phase roadmap](./roadmap.md) separates current foundations from proposals: (1) secure channel operations, (2) expanded analytics, (3) reporting, (4) transcript intelligence, (5) editorial/SEO planning, and (6) human-authorized automation. Only parts of phases 1–4 are delivered; periodic reporting, semantic search, broader editorial planning, and Phase 6 upload/scheduling are future work. **No upload or `publishAt` implementation exists.**
 
@@ -29,7 +29,7 @@ The [six-phase roadmap](./roadmap.md) separates current foundations from proposa
 2. Refine and approve issue #3 with an exact type label, or create focused, reviewable Shorts-upload issues with explicit authorization boundaries.
 3. Implement a validated, confirmed **private upload** contract first; only then scope scheduling, followed by separate MCP/CLI/UI exposure. Keep channel, file identity, metadata, time, retries, and recovery reviewable as the roadmap specifies.
 
-Use a focused approved issue, branch, worktree, and PR for each slice; require an exact type label, focused and applicable broader validation, and explicit merge authorization. Preserve dirty local checkout state rather than overwriting it. Publication of this report itself belongs in a separate docs-only PR and is still pending.
+Use a focused approved issue, branch, worktree, and PR for each slice; require an exact type label, focused and applicable broader validation, and explicit merge authorization. Preserve dirty local checkout state rather than overwriting it. This report is documentation evidence, not authorization to implement or publish a future capability.
 
 ## Open risks
 
