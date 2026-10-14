@@ -7,6 +7,7 @@ export function DashboardSidebar() {
   const pathname = usePathname();
   const links = [
     { href: "/dashboard", label: "Dashboard" },
+    { href: "/dashboard/upload", label: "Private upload" },
     { href: "/dashboard/quota", label: "Quota usage" },
   ];
 
