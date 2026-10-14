@@ -48,8 +48,8 @@ export default function QuotaPage() {
 
   const unauthorized = status === "unauthenticated" || usage.kind === "unauthorized";
   return (
-    <main className="mx-auto max-w-3xl px-4 py-12">
-      <Link href="/dashboard" className="text-sm text-zinc-400 hover:text-zinc-200">← Dashboard</Link>
+    <main>
+      <Link href="/dashboard" className="rounded text-sm text-zinc-400 hover:text-zinc-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">← Dashboard</Link>
       <h1 className="mt-6 text-2xl font-bold">Quota usage</h1>
       <p className="mt-2 text-sm text-zinc-400">
         Estimated YouTube API units recorded by TubeMaster. These estimates are not authoritative Google quota usage or remaining quota.

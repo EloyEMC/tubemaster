@@ -1,28 +1,13 @@
 "use client";
 
-import { useSession, signOut, signIn } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { useEffect, useState, useCallback } from "react";
 import { RuleForm } from "@/components/rule-form";
 import { RuleList } from "@/components/rule-list";
 import { RunButton } from "@/components/run-button";
 import { ManualMode } from "@/components/manual-mode";
 import { TranscriptDashboard } from "@/components/transcript-dashboard";
-import { nextChannelThumbnail, withProfileImageFallback } from "@/components/channel-thumbnail";
-
-type ChannelInfo = {
-  id: string;
-  title: string;
-  thumbnail?: string;
-  thumbnailCandidates?: string[];
-  videoCount?: string;
-};
-
-type ChannelState =
-  | { status: "loading" | "empty" | "error" }
-  | { status: "ready"; channel: ChannelInfo };
-
 type Rule = {
   id: number;
   name: string;
@@ -39,53 +24,19 @@ export default function Dashboard() {
   const { data: session, status } = useSession();
   const [rules, setRules] = useState<Rule[]>([]);
   const [tab, setTab] = useState<Tab>("manual");
-  const [channelState, setChannelState] = useState<ChannelState>({ status: "loading" });
-  const channel = channelState.status === "ready" ? channelState.channel : null;
-  const [failedThumbnail, setFailedThumbnail] = useState<string | undefined>();
-  const candidates = channel
-    ? withProfileImageFallback(
-        channel.thumbnailCandidates ?? (channel.thumbnail ? [channel.thumbnail] : []),
-        session?.user?.image,
-      )
-    : [];
-  const thumbnail = failedThumbnail === undefined
-    ? candidates[0]
-    : nextChannelThumbnail(candidates, failedThumbnail);
-
   const fetchRules = useCallback(async () => {
     const res = await fetch("/api/rules");
     const data = await res.json();
     setRules(data);
   }, []);
 
-  const fetchChannel = useCallback(async () => {
-    setChannelState({ status: "loading" });
-    setFailedThumbnail(undefined);
-    try {
-      const res = await fetch("/api/youtube/channel-info");
-      if (!res.ok) throw new Error("Channel request failed");
-      const data: { channel: ChannelInfo | null } = await res.json();
-      setChannelState(data.channel
-        ? { status: "ready", channel: data.channel }
-        : { status: "empty" });
-    } catch {
-      setChannelState({ status: "error" });
-    }
-  }, []);
-
   useEffect(() => {
     if (session) {
       queueMicrotask(() => {
         void fetchRules();
-        void fetchChannel();
       });
     }
-  }, [session, fetchRules, fetchChannel]);
-
-  async function handleSwitchChannel() {
-    await signOut({ redirect: false });
-    await signIn("google");
-  }
+  }, [session, fetchRules]);
 
   if (status === "loading") {
     return (
@@ -105,67 +56,15 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-12">
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">YouTube Playlist Manager</h1>
-          <p className="text-sm text-zinc-400">
-            Welcome, {session.user?.name}
-          </p>
-        </div>
-        <button
-          onClick={() => signOut()}
-          className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200"
-        >
-          Sign Out
-        </button>
-      </div>
-
-      <div className="mb-6 flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
-        <div className="flex items-center gap-3">
-          {thumbnail && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={thumbnail}
-              onError={() => setFailedThumbnail(thumbnail)}
-              alt={channel?.title ?? "Channel"}
-              className="h-10 w-10 rounded-full"
-            />
-          )}
-          <div>
-            <p className="text-xs text-zinc-500">Active YouTube channel</p>
-            <p className="font-medium">
-              {channel?.title ?? (channelState.status === "loading"
-                ? "Loading..."
-                : channelState.status === "empty"
-                  ? "No channel found"
-                  : "Unable to load channel")}
-              {channel?.videoCount && (
-                <span className="ml-2 text-xs text-zinc-500">
-                  {channel.videoCount} videos
-                </span>
-              )}
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={handleSwitchChannel}
-          className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-800"
-        >
-          Switch Channel
-        </button>
-      </div>
-
-      <Link href="/dashboard/quota" className="mb-6 inline-block text-sm text-zinc-400 underline hover:text-zinc-200">
-        View quota usage
-      </Link>
-
+    <main className="space-y-6">
+      <h1 className="text-2xl font-bold">Dashboard</h1>
       <TranscriptDashboard />
 
       <div className="mb-6 flex gap-1 rounded-lg bg-zinc-900 p-1">
         <button
           onClick={() => setTab("manual")}
-          className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+          aria-pressed={tab === "manual"}
+          className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
             tab === "manual"
               ? "bg-zinc-800 text-white"
               : "text-zinc-400 hover:text-zinc-200"
@@ -175,7 +74,8 @@ export default function Dashboard() {
         </button>
         <button
           onClick={() => setTab("rules")}
-          className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+          aria-pressed={tab === "rules"}
+          className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
             tab === "rules"
               ? "bg-zinc-800 text-white"
               : "text-zinc-400 hover:text-zinc-200"
@@ -210,6 +110,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-    </div>
+    </main>
   );
 }
