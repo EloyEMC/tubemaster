@@ -2,7 +2,7 @@
 
 ## Status
 
-- State: ready for publication
+- State: published for review
 - Branch: `docs/roadmap-shorts-upload`
 - Base: `upstream/feature-2` at `21847a1`
 - Source: client request and competitive-priorities roadmap
@@ -27,4 +27,11 @@ Add the roadmap to the repository documentation and document the proposed agent-
 
 - [x] Add roadmap documentation and README link.
 - [x] Validate links, consistency, and diff checks: 21/21 local links/images valid; content audit passed; trailing-whitespace audit passed.
-- [ ] Commit and publish a docs-only PR; merge requires explicit authorization.
+- [x] Commit and publish a docs-only PR; merge requires explicit authorization.
+
+## Evidence
+
+- Work-unit commit: `9560877` (`docs(roadmap): document Shorts upload automation`).
+- PR #63: https://github.com/Gentleman-Programming/tubemaster/pull/63.
+- PR state: OPEN/MERGEABLE with exactly one `type:feature` label; no automated checks reported.
+- Runtime code was not changed.
