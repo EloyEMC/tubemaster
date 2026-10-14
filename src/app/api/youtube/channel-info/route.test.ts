@@ -49,6 +49,30 @@ test("channel info returns ordered candidates and preserves channel metadata", a
   } });
 });
 
+test("channel info exposes standard and maxres thumbnail candidates for the dashboard", async () => {
+  const response = await createChannelInfoGetHandler(makeDeps({
+    list: async () => ({ data: { items: [{
+      ...channel,
+      snippet: { title: "Recursos Educativos ABC & 123", thumbnails: {
+        default: { url: "https://example.com/default" },
+        standard: { url: "//yt3.googleusercontent.com/standard" },
+        maxres: { url: "https://yt3.googleusercontent.com/maxres" },
+      } },
+      statistics: { videoCount: "79" },
+    }] } }),
+  }))();
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { channel: {
+    id: "channel-1", title: "Recursos Educativos ABC & 123", videoCount: "79",
+    thumbnail: "https://yt3.googleusercontent.com/maxres",
+    thumbnailCandidates: [
+      "https://yt3.googleusercontent.com/maxres",
+      "https://yt3.googleusercontent.com/standard",
+      "https://example.com/default",
+    ],
+  } });
+});
+
 test("channel info returns unauthorized when session is missing", async () => {
   const response = await createChannelInfoGetHandler(
     makeDeps({ session: null }),

@@ -16,6 +16,22 @@ test("orders usable channel images high to default and removes duplicates", () =
   assert.deepEqual(channelThumbnailCandidates(null), []);
 });
 
+test("renders standard and maxres variants and protocol-relative YouTube image URLs", () => {
+  const candidates = channelThumbnailCandidates({
+    maxres: { url: "//yt3.googleusercontent.com/maxres" },
+    standard: { url: "https://yt3.googleusercontent.com/standard" },
+    high: { url: "https://yt3.googleusercontent.com/high" },
+  });
+  assert.deepEqual(candidates, [
+    "https://yt3.googleusercontent.com/maxres",
+    "https://yt3.googleusercontent.com/standard",
+    "https://yt3.googleusercontent.com/high",
+  ]);
+  assert.equal(nextChannelThumbnail(candidates, candidates[0]), candidates[1]);
+  assert.deepEqual(channelThumbnailCandidates({ standard: { url: "//yt3.googleusercontent.com/avatar" } }),
+    ["https://yt3.googleusercontent.com/avatar"]);
+});
+
 test("tries a distinct HTTPS profile image last, then hides the image on failure", () => {
   const youtube = ["https://example.com/high", "https://example.com/default"];
   const candidates = withProfileImageFallback(youtube, " https://example.com/profile ");
