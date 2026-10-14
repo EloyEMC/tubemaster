@@ -102,6 +102,7 @@ test("explicit YouTube costs cover every supported operation", () => {
     "channels.list": 1,
     "videos.list": 1,
     "videos.update": 50,
+    "videos.insert": 100,
     "playlists.list": 1,
     "playlists.insert": 50,
     "playlists.update": 50,
