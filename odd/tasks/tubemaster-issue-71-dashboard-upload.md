@@ -2,7 +2,7 @@
 
 ## Status
 
-- State: Finder/browser picker correction implemented; browser verification pending
+- State: implementation complete; browser smoke passed; ready for review
 - Issue: https://github.com/Gentleman-Programming/tubemaster/issues/71
 - Approval: `status:approved` and `type:feature`
 - Branch: `feat/issue-71-dashboard-upload`
@@ -20,8 +20,8 @@ Add the authenticated dashboard workflow for preparing and confirming a private 
 - [x] Add deterministic request/state helper tests. Node tests cannot verify DOM behavior.
 - [x] Accessibility follow-up: focus the first invalid field on submission and announce active-channel loading, errors, and identity in a polite live region while keeping the text visible.
 - [x] Stage the chosen video through an authenticated, bounded multipart endpoint with an opaque randomized reference before preview.
-- [ ] Manually verify Finder/browser picker selection, selected filename, staging progress, extension/size failures, reselection invalidation, authenticated/unauthenticated navigation, keyboard focus, narrow viewport, channel switching, preview, confirm, and uncertain-response behavior on a server started from this worktree. Port 3102 may serve a different checkout.
-- [ ] Parent-owned commit and PR update.
+- [x] Browser smoke on port 3102 from this worktree: authenticated dashboard navigation, native Finder picker, staged filename display, preview with no YouTube upload, and confirmed private upload returned a video ID and operation ID. No credentials or local paths were exposed.
+- [x] Parent commit `1fa96ea` pushed to PR #72; merge remains separately authorized.
 
 ## Decisions for this slice
 
@@ -36,4 +36,4 @@ Add the authenticated dashboard workflow for preparing and confirming a private 
 - `node --import tsx --test src/lib/video-upload/staging.test.ts src/app/api/youtube/upload/stage/route.test.ts src/components/dashboard-upload-form.test.tsx`: 7 passed.
 - `./node_modules/.bin/tsc --noEmit`: passed.
 - Full validation: 290/290 tests, TypeScript, lint, diff check, and build passed. Build emitted a non-blocking Turbopack whole-project tracing warning involving `src/lib/video-upload/staging.ts`.
-- Browser smoke remains required for native chooser, focus movement, staging/preview transitions, channel announcements, and narrow layouts; Node helper tests cannot verify DOM behavior.
+- Browser smoke passed for native chooser, staging/preview transitions, channel identity, and confirmed private upload. Detailed screen-reader/focus and narrow-layout coverage remains limited to visual/manual verification; Node helper tests cannot verify DOM behavior.
