@@ -1,0 +1,14 @@
+# TubeMaster issue #73 — task mirror
+
+Goal: preserve the distinction between expected validation failures and unexpected server failures in authenticated upload staging.
+
+Tasks:
+1. [x] Add regression coverage for StageError versus unexpected errors.
+2. [x] Narrow route/staging catches and keep UI messaging safe.
+3. [x] Run focused checks, self-review, and commit the work unit.
+
+Validation: focused tests 12/12, TypeScript, focused ESLint, and diff check passed.
+Commit: `5152605` (`fix(upload): preserve staging server errors`).
+
+Scope: upload staging route/tests, staging implementation/tests, and upload form error mapping only if required.
+Status: complete.
