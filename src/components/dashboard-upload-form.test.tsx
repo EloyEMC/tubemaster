@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { uploadMessage, uploadPayload, validateUpload } from "./dashboard-upload-form";
+import { stagingFailureMessage, uploadMessage, uploadPayload, validateUpload } from "./dashboard-upload-form";
 
 const fields = { stagingFile: "clip.mp4", title: "  Short  ", description: "About", expectedChannelId: "UC123" };
 
@@ -16,6 +16,13 @@ test("rejects paths and invalid fields before upload", () => {
 test("preview and explicit confirmation send only adapter fields", () => {
   assert.deepEqual(uploadPayload(fields, true), { ...fields, title: "Short", dryRun: true, confirmed: false });
   assert.deepEqual(uploadPayload(fields, false), { ...fields, title: "Short", dryRun: false, confirmed: true });
+});
+
+test("staging failures only suggest fixing the video for validation errors", () => {
+  assert.match(stagingFailureMessage(400), /Check its extension and size/);
+  assert.match(stagingFailureMessage(401), /Sign in again/);
+  assert.equal(stagingFailureMessage(500), "Video staging is unavailable. Try again later.");
+  assert.equal(stagingFailureMessage(503), "Video staging is unavailable. Try again later.");
 });
 
 test("uncertain outcomes preserve operation ID and discourage retry", () => {

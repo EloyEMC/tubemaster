@@ -58,8 +58,9 @@ export async function stageVideo(request: Request, rootPath: string, maxBytes: n
     await mkdir(root, { recursive: true, mode: 0o700 });
     if (!(await lstat(root)).isDirectory() || (await lstat(root)).isSymbolicLink()) throw new StageError("validation_failed");
     const stagingFile = `${randomUUID()}.${extension}`;
-    path = join(root, stagingFile);
-    handle = await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+    const target = join(root, stagingFile);
+    handle = await open(target, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+    path = target;
     let size = 0;
     while (true) {
       const at = indexOf(marker);
@@ -84,8 +85,7 @@ export async function stageVideo(request: Request, rootPath: string, maxBytes: n
   } catch (error) {
     await handle?.close().catch(() => {});
     if (path) await unlink(path).catch(() => {});
-    if (error instanceof StageError) throw error;
-    throw new StageError("validation_failed");
+    throw error;
   } finally {
     iterator.releaseLock();
   }

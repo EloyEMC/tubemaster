@@ -27,6 +27,12 @@ export function uploadMessage(reply: UploadReply, dryRun: boolean): string {
   return "Unexpected response. Check your YouTube channel before attempting another upload; do not retry automatically.";
 }
 
+export function stagingFailureMessage(status: number): string {
+  if (status === 401) return "Session expired. Sign in again before staging.";
+  if (status === 400) return "Video could not be staged. Check its extension and size, then try again.";
+  return "Video staging is unavailable. Try again later.";
+}
+
 export function DashboardUploadForm() {
   const [fields, setFields] = useState<UploadFields>(emptyUploadFields);
   const [channel, setChannel] = useState<{ id: string; title: string } | null>(null);
@@ -96,7 +102,7 @@ export function DashboardUploadForm() {
         form.set("file", selectedFile);
         const stageResponse = await fetch("/api/youtube/upload/stage", { method: "POST", body: form });
         if (!stageResponse.ok) {
-          setMessage(stageResponse.status === 401 ? "Session expired. Sign in again before staging." : "Video could not be staged. Check its extension and size, then try again.");
+          setMessage(stagingFailureMessage(stageResponse.status));
           return;
         }
         const staged = await stageResponse.json() as { stagingFile?: string };
