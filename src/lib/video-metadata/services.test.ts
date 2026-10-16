@@ -280,6 +280,34 @@ test("getTranscript emits correlated lifecycle events", async () => {
   ]);
 });
 
+test("getTranscript failure logs only typed code and retains result when logger throws", async () => {
+  const events: Array<{ event: string; context?: Record<string, unknown> }> = [];
+  const secret = "raw provider transcript and token";
+  const input = { credentialRef: { userId: "user-1" }, videoId: "video-1" };
+  const deps = makeDeps({
+    operationIdFactory: () => "transcript-failure",
+    transcriptProvider: { getTranscript: async () => { throw new Error(secret); } },
+    logger: {
+      info: (payload) => events.push(payload),
+      error: (payload) => events.push(payload),
+    },
+  });
+  await assert.rejects(
+    () => createVideoMetadataServices(deps).getTranscript(input),
+    (error: unknown) => error instanceof DomainError && error.code === "transcript_unavailable",
+  );
+  assert.deepEqual(events, [
+    { event: "video_metadata.transcript.started", context: { operationId: "transcript-failure", videoId: "video-1" } },
+    { event: "video_metadata.transcript.error", context: { operationId: "transcript-failure", videoId: "video-1", code: "transcript_unavailable" } },
+  ]);
+  assert.equal(JSON.stringify(events).includes(secret), false);
+  deps.logger.error = () => { throw new Error("logger unavailable"); };
+  await assert.rejects(
+    () => createVideoMetadataServices(deps).getTranscript(input),
+    (error: unknown) => error instanceof DomainError && error.code === "transcript_unavailable" && error.message === secret,
+  );
+});
+
 test("getTranscript keeps available status", async () => {
   const services = createVideoMetadataServices(makeDeps());
 
@@ -924,6 +952,23 @@ test("applyMetadata traces guardrail rejection without exposing details", async 
     operationId: "guardrail-operation",
     videoId: "video-1",
   });
+});
+
+test("applyMetadata dry-run audit context is bounded and correlated", async () => {
+  const events: Array<{ event: string; context?: Record<string, unknown> }> = [];
+  const services = createVideoMetadataServices(makeDeps({
+    operationIdFactory: () => "dry-audit",
+    logger: { info: (payload) => events.push(payload), error: (payload) => events.push(payload) },
+  }));
+  await services.applyMetadata({
+    credentialRef: { userId: "user-1" }, videoId: "video-1",
+    finalTitle: "private title", description: "private description",
+    expectedChannelId: "UC_ACTIVE", dryRun: true,
+  });
+  assert.deepEqual(events, [
+    { event: "video_metadata.apply.started", context: { operationId: "dry-audit", videoId: "video-1", expectedChannelId: "UC_ACTIVE", dryRun: true } },
+    { event: "video_metadata.apply.dry_run", context: { operationId: "dry-audit", videoId: "video-1", expectedChannelId: "UC_ACTIVE", dryRun: true } },
+  ]);
 });
 
 test("applyMetadata ignores logger failures", async () => {

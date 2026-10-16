@@ -4,6 +4,18 @@
 
 Use this as the operational reference after setup: TubeMaster covers channel workflows across metadata, transcripts, playlists, rules, quota reporting, and automation surfaces. Quota values are observational estimates from recorded operations; they do not enforce or replace YouTube's authoritative quota accounting.
 
+## Operation audit logs
+
+TubeMaster emits structured lifecycle events for metadata/transcript (`video_metadata.*`) and playlist (`playlist_management.*`) workflows. These logs are observational; they do not authorize or change an operation.
+
+| Detail | Behavior |
+|--------|----------|
+| Events | Start, dry run, success, and failure events carry an operation ID. |
+| Safe context | Bounded operation, video, playlist, and channel identifiers; `expectedChannelId`; `dryRun`; and a typed error `code` when available. |
+| Redaction | Access/refresh tokens, user-authored descriptions, transcript text, and raw provider errors are excluded. |
+| Destination | The default logger writes JSON lines with a timestamp and level to process `stderr`. |
+| Storage and retention | This slice does not persist audit events in SQLite. The runtime that captures `stderr` controls retention and rotation; durable application storage is a separate decision. |
+
 ## Web UI (`http://localhost:3000`)
 
 ### Login flow

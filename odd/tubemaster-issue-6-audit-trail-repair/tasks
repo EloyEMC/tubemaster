@@ -1,0 +1,19 @@
+# Tasks — TubeMaster issue #6 audit-trail repair
+
+Branch: `feat/issue-6-operation-audit`, based on `origin/feature-2` (`4a243e3`). Canonical issue #6; migrated fork mirror #23. Replacement PR #46 is open; recovery-snapshot PR #2 is closed as superseded.
+
+Current finding: the base already had metadata/transcript and playlist lifecycle events. The logger privacy leak and namespace rewrite are fixed, and `docs/interfaces.md` now documents the event/retention model. The approved replacement is published as PR #46 within the 400-line budget.
+
+- [x] **Harden the issue #6 default audit logger.** Commit `4222ff547a6801edc9366b3e31d137a53e307c76` (`fix(audit): redact sensitive structured log context`); preserves safe fields and both event namespaces.
+- [x] **Document audit logging and verify the final 400-line budget.** Commit `4f97823` (`docs(audit): document operation audit event retention`) documents lifecycle, safe context, stderr output, redaction, and non-persistent retention. `git diff --check` passed; final reviewed candidate was 297 changed lines.
+- [x] **Prepare the clean replacement PR chain.** User authorized creating `status:approved` and `type:bug`, approving mirror #23, opening the replacement, and closing PR #2 afterward. Both labels were created, #23 approved, PR #46 opened with one `type:bug` label, and PR #2 closed as superseded. Native review `review-3f581b15ede32448` approved and was acknowledged. No canonical issue #6 change; `Closes #23` closes the fork mirror only upon merge.
+
+## TDD and verification evidence
+- RED for logger privacy: 51 passed, 1 failed; the default logger emitted `description`, `transcript`, `accessToken`, and provider `message`.
+- RED for namespace preservation: 1 passed, 1 failed; `playlist_management.update.error` became `video_metadata.unknown`.
+- GREEN focused run: 53 passed, 0 failed. Both namespaces, redaction, and tested service guardrails pass; Node emitted a `module.register()` deprecation warning.
+- `npm run lint` and `node_modules/.bin/tsc --noEmit --incremental false` passed before the docs-only update. `git diff --check` passed; PR #46 opened at 293 additions and 4 deletions (297 lines). The status-only task-record update was rechecked; the final PR remains within the 400-line cap. Full suite/build were not run; GitHub reported no checks configured on the branch.
+- Runtime harness: N/A; internal stderr logger, no UI, HTTP, OAuth, or external provider boundary. Rollback boundary: revert logger hardening and issue-6 regression/task documentation; service behavior remains unchanged.
+- A separate `.atl/skill-registry.md` local modification is preserved and excluded.
+
+Branch `feat/issue-6-operation-audit` was pushed to EloyEMC/tubemaster. PR #46 is open against `feature-2`; PR #2 is closed as superseded. Fork issue #23 remains open until PR #46 is merged. Canonical issue #6 remains unchanged.
