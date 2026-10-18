@@ -2,7 +2,7 @@
 
 Approved issue #92 implementation record. Read through `## Log` before working.
 
-Delivery strategy: `single-pr` for this focused workflow/documentation unit; slice boundary is commit `02c8960` (83 authored lines).
+Delivery strategy: `single-pr` with two reviewable slices: initial workflow/documentation commit `036be25`, followed by Node compatibility correction commit `0b03d1c` (14 authored lines).
 
 ## Specs
 
@@ -14,14 +14,17 @@ Delivery strategy: `single-pr` for this focused workflow/documentation unit; sli
 
 ## Tasks
 
-- T1 (S1-S5) — Add least-privilege GitHub Actions validation workflow — commit `02c8960`.
-- T2 (S1-S5) — Document local and CI validation commands and safety boundaries — commit `02c8960`.
-- T3 (S1-S5) — Run checks, inspect diff, and record evidence — commit `02c8960`.
+- T1 (S1-S5) — Add least-privilege GitHub Actions validation workflow — commit `036be25`, corrected by pending compatibility commit.
+- T2 (S1-S5) — Document local and CI validation commands and safety boundaries — commit `036be25`.
+- T3 (S1-S5) — Run checks, inspect diff, and record evidence — commit `036be25`.
+- T4 (S1-S5) — Correct GitHub Node compatibility and revalidate — commit `0b03d1c`.
 
 ## Log
 
 - L1 — "creala"
 - L2 — Issue #92 was created and later received `status:approved`.
 - L3 — Repository inspection confirmed no existing `.github/workflows/` files; package scripts provide `test`, `lint`, and `build`, while TypeScript is validated with `npx tsc --noEmit`.
-- L4 — The first parallel test run produced a SQLite `BUSY` failure (302/303 passed); rerunning with `--test-concurrency=1` passed 302/302, so the package test script now enforces serial execution for reliable CI.
-- L5 — Final validation passed: `npm run test` 302/302, `npm run lint`, `npx tsc --noEmit`, `npm run build`, structural workflow check, and `git diff --check`. The build emitted one existing NFT tracing warning from `next.config.ts` but completed successfully.
+- L4 — The first parallel test run produced a SQLite `BUSY` failure (302/303 passed); rerunning with `--test-concurrency=1` passed 302/302. The CI workflow runs that serial flag explicitly on Node.js 22.14.0 while preserving the package script's Node >=20.9 compatibility.
+- L5 — Local validation passed: serial test command 302/302, `npm run lint`, `npx tsc --noEmit`, `npm run build`, structural workflow check, and `git diff --check`. The build emitted one existing NFT tracing warning from `next.config.ts` but completed successfully.
+- L6 — GitHub Actions run `39123079087` failed before tests because Node.js 20.9.0 rejected `--test-concurrency=1`; the workflow was corrected to Node.js 22.14.0 with the flag passed only to CI.
+- L7 — Corrected local validation passed: serial test command 302/302, ESLint, TypeScript, and production build. The existing NFT tracing warning remained non-fatal.
